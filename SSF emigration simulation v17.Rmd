@@ -38,7 +38,7 @@ rm(list=ls(all=TRUE))
 #Source functions
 source("Clean SSF data base.R") #I just dpulicated the code I used for cleaning the tleemtry data just in case I modified the latter, so to avoid that the changes affect the present code 
 
-#Fuction for cleaning telemetry data base
+#Function for cleaning telemetry data base
 clean.tel.data()
 
 #Copy data base
