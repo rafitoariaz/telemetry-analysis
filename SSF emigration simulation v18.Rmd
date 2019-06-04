@@ -1,0 +1,1309 @@
+---
+title: "Telemetry analysis clay colored thrush"
+author: "Luis Antonio Arias Medellin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Load required packages
+
+```{r, include=FALSE}
+#Load libraries
+library("openxlsx")
+library("NISTunits")
+library("rgdal")
+library("ggmap")
+library("SDMTools")
+library("raster")
+library("MetaLandSim") # need to run code source("https://bioconductor.org/biocLite.R") biocLite("Biobase")
+library("rgeos")
+library("maps")
+library("maptools")
+library("geosphere")
+library("amt")
+library("tidyr")
+library("cowplot")
+library("reshape2")
+```
+
+## FORMAT DATA BASE FOR ANALYSIS
+
+http://tlocoh.r-forge.r-project.org/tips/isopleth_overlap_auto.html
+
+```{r, include=FALSE}
+
+#Remove anything on workspace
+rm(list=ls(all=TRUE))
+
+#Source functions
+source("Clean SSF data base.R") #I just dpulicated the code I used for cleaning the tleemtry data just in case I modified the latter, so to avoid that the changes affect the present code 
+
+#Function for cleaning telemetry data base
+clean.tel.data()
+
+#Copy data base
+dat<-prueba
+
+#Select only columns of interest
+dat<-dat[,c("LOCATION.X","LOCATION.Y","TIME","FREQ")]
+
+#Rename columns
+colnames(dat)<-c("x","y","t","id")
+
+aggregate(dat,by=list(dat$id),FUN=length) %>% 
+  arrange(-id)
+  id.freq<-232
+  
+dat_1<-subset(dat,dat$id==id.freq) #HERE I WILL START WITH ONE BIRD
+#dat_1.original<-subset(dat,dat$id==232) #HERE I WILL START WITH ONE BIRD
+
+#dat_1<-subset(dat_1.original, format(dat_1.original$t,'%d')=='13') #I AM SUBSETTING BIRDS FROM ONE SPECIFIC DAY BECAUSE THERE ARE TIME DIFFERENCES BETWEEN DAYS SO THE SAMPLING RATE DOES NOT REFLECT THE REALITY
+
+#Removing functions used for cleaning the data base
+rm(clean.freq,clean.tel.data)
+
+```
+
+
+The function `mktrack` creates a track (the basic building block of the
+amt package), given the names of the columns containing x and y
+coordinates, time (t), and we can set a coordinate reference system (CRS). The original data was provided in geographical coordinates  (EPSG  code:  4326).   Here  we  shall  transform  this  original  CRS  (using function `transformcoords`) to the projected North American Datum (NAD83, EPSGcode:  5070). I DO NOT UNDERSTAND WHAT THIS FUNCTION IS FOR
+
+```{r}
+dat_1 <- mk_track(dat_1, x, y, t) #CHECK PROBLEM WITH TIME ZONE
+
+#dat_1 <- mk_track(dat_1, x, y, t, crs = sp::CRS("+init=epsg:4326")) %>%
+#transform_coords(sp::CRS("+init=epsg:5070"))
+```
+
+We then summarize the distribution of time intervals between successive locations to get a general impression for the sampling rate.
+
+```{r}
+summarize_sampling_rate(dat_1)
+```
+
+### Translate from point to step representation
+
+```{r}
+stps <- track_resample(dat_1, rate = minutes(5), tolerance = minutes(2)) %>%
+filter_min_n_burst(min_n = 3) %>% steps_by_burst()
+#%>%
+#time_of_day(include.crepuscule = FALSE)
+```
+
+```{r}
+str(stps, width = 80, strict.width = "no", nchar.max = 80, give.attr = FALSE)
+```
+
+### Prepare environmental data
+
+```{r}
+#land_use <- raster("data/landuse_study_area.tif")
+#Load raster
+land_use<-raster("Map layers/Aug27_15rasters/forest27")
+m<-matrix(c(0,1,0,
+            1,2,1),ncol=3,byrow=T) #Make a matrix to reclsify values from 1 to 1 and the new value is 0
+land_use<-reclassify(land_use,m)
+#land_use2 <- land_use == 2
+names(land_use) <- "forest27"
+
+#Remove matrix used to reclasiffy values
+rm(m)
+```
+
+## 1.2. Exploratory data analysis
+
+We could have also included cosines of the turning angles and their interaction with
+day. This choice would modify the concentration parameter of the underlying von
+Mises distribution for the turning angles and allow the degree of directional persistence
+to depend on time of day;
+```{r}
+eda1 <- stps %>% extract_covariates(land_use, where = "both") %>%
+mutate(landuse.start = factor(forest27_start, levels = c(0, 1), labels = c("matrix", "forest"))) %>% #factor (forest27_start you have to check the name of the column of the data base that is generated one step before (in this case is forest27_start). Just run the 2 precedent pipe lines and a tibble with the names of the column will appeaar)
+mutate(landuse.end = factor(forest27_end, levels = c(0, 1), labels = c("matrix", "forest")))
+```
+
+
+### Barplot of step length and turn angle by land use
+
+```{r}
+
+
+#Observe step length in forested and matrix
+library("lattice")
+library("latticeExtra")
+
+jpeg(paste("Graphs/step length turning angle bird frequency ",id.freq,".jpg"),quality=100,width=1000,height=700)
+
+par(mfrow=c(1,2))
+#Barplot of step length
+boxplot(eda1$sl_~eda1$landuse.start,main="Step lenght per land use type",xlab="Land use type",ylab="Step length (m)")
+
+#Put text of sample size per land use
+text(x=1,y=quantile(eda1$sl_,prob=0.9),labels=paste("n=",nrow(subset(eda1,eda1$landuse.start=="matrix"))))
+text(x=2,y=quantile(eda1$sl_,prob=0.9),labels=paste("n=",nrow(subset(eda1,eda1$landuse.start=="forest"))))
+
+#Barplot of turn angle
+boxplot(eda1$ta_~eda1$landuse.start,main="Turn angle per land use type",xlab="Land use type",ylab="Angle (m)")
+
+#Put text of sample size per land use
+text(x=1,y=quantile(subset(eda1,eda1$landuse.start=="matrix" & is.na(eda1$ta_)=="FALSE")$ta_,prob=0.9),labels=paste("n=",nrow(subset(eda1,eda1$landuse.start=="matrix"))))
+text(x=2,y=quantile(subset(eda1,eda1$landuse.start=="forest" & is.na(eda1$ta_)=="FALSE")$ta_,prob=0.9),labels=paste("n=",nrow(subset(eda1,eda1$landuse.start=="forest"))))
+
+dev.off()
+```
+
+#Histogram with density line of step length and turn angle by land use
+
+```{r}
+
+#Pooled
+par(mfrow=c(2,3))
+h<-hist(eda1$sl_,prob=T,xlab="Step length (m)",main="Pooled step length")
+lines(density(eda1$sl_),lwd = 2,col = "red")
+
+#Matrix
+hist(subset(eda1,eda1$landuse.start=="matrix")$sl_,prob=T,xlab="Step length (m)",main="Step length in matrix",breaks=h$breaks)
+lines(density(subset(eda1,eda1$landuse.start=="matrix")$sl_),lwd = 2,col = "red")
+
+#Forest
+hist(subset(eda1,eda1$landuse.start=="forest")$sl_,prob=T,xlab="Step length (m)",main="Step length in forest",breaks=h$breaks)
+lines(density(subset(eda1,eda1$landuse.start=="forest")$sl_),lwd = 2,col = "red")
+
+
+#Pooled
+h<-hist(subset(eda1,is.na(eda1$ta_)=="FALSE")$ta_,prob=T,xlab="Turn angle (m)",main="Pooled turn angle")
+lines(density(subset(eda1,is.na(eda1$ta_)=="FALSE")$ta_),lwd = 2,col = "red")
+
+#Matrix
+hist(subset(eda1,eda1$landuse.start=="matrix" & is.na(eda1$ta_)=="FALSE")$ta_,prob=T,xlab="Step length (m)",main="Turn angle in matrix",breaks=h$breaks)
+lines(density(subset(eda1,eda1$landuse.start=="matrix" & is.na(eda1$ta_)=="FALSE")$ta_),lwd = 2,col = "red")
+
+#Forest
+hist(subset(eda1,eda1$landuse.start=="forest" & is.na(eda1$ta_)=="FALSE")$ta_,prob=T,xlab="Step length (m)",main="Turn angle in forest",breaks=h$breaks)
+lines(density(subset(eda1,eda1$landuse.start=="forest" & is.na(eda1$ta_)=="FALSE")$ta_),lwd = 2,col = "red")
+
+#Remove object created for formatting histogram
+rm(h)
+```
+
+```{r}
+d<-eda1 %>% 
+  mutate(matrix.matrix=dplyr::if_else(landuse.start=="matrix" & landuse.end=="matrix",1,0),
+         matrix.forest=dplyr::if_else(landuse.start=="matrix" & landuse.end=="forest",1,0),
+         forest.matrix=dplyr::if_else(landuse.start=="forest" & landuse.end=="matrix",1,0),
+         forest.forest=dplyr::if_else(landuse.start=="forest" & landuse.end=="forest",1,0)) %>% 
+  summarise(prop.matrix.matrix=mean(matrix.matrix),
+            prop.matrix.forest=mean(matrix.forest),
+            prop.forest.matrix=mean(forest.matrix),
+            prop.forest.forest=mean(forest.forest))  %>% 
+  as.matrix(.)
+
+jpeg(paste("Graphs/Change between habitats bird frequency ",id.freq,".jpg"),quality=100,width=1000,height=700)
+par(cex=1.5)
+barplot(d,main=paste("Id frequency ",id.freq),xlab="Change between habitats",ylab="Proportion",names.arg=c("Stayed in matrix","Forest-matrix","Matrix-forest","Stayed in forest"),cex.names=1.5,cex.axis=1.5,cex.main=1.5,cex.lab=1.5)
+
+dev.off()
+```
+
+
+## 1.3. Fit SSF model
+
+
+```{r}
+#Set the number of random steps
+random.steps<-9
+
+m1 <-stps %>% random_steps(n = random.steps) %>%  #Generates n randoms steps
+  extract_covariates(land_use, where = "both") %>% #Extracts the covariates of the raster map at the begining of the step, end or both
+#time_of_day(include.crepuscule = FALSE) %>% 
+mutate(log_sl_ = log(sl_)) -> d1
+
+#Fitting the model. case_ is an id of that shows if the bird selected a step or if it is a random step. I AM CONFUSED ABOUT THE MODEL. CHECK IT LATER
+m1 <- d1 %>% fit_issf(case_ ~ forest27_end + # Are the explanatory variables influencing where the bird will go (habitat selection)?
+                        sl_ + #Step length (I THINK IS ALSO A MODIFIER OF THE PARAMETER OF THE GAMMA DISTRIBUTION, ALTHOUGH IN THE ORIGINAL CODE IS LOG TRANSOFRMED)
+                        #ta_ + #Does turning angle explains where will the animal go? I TOOK IT OUT BECAUSE IT MAKES THE MODEL ACT WEIRD
+                        sl_:forest27_start + #Does the step lenght varies between land use?
+                        #ta_:forest27_start + #Does the turn angle varies between land use?
+                        forest27_start:forest27_end +  #Are animals more likely to stay in a given habitat if they are already in the habitat?
+                        strata(step_id_)) # I DO NOT KNOW WHAT THIS MEANS
+
+#Without forest start and forest end interaction
+
+m1 <- d1 %>% fit_issf(case_ ~ forest27_end + 
+                        sl_ + 
+                        sl_:forest27_start + 
+                        #ta_:forest27_start +  
+                        strata(step_id_))
+
+#Without forest end
+m1 <- d1 %>% fit_issf(case_ ~ sl_ + 
+                        sl_:forest27_start + 
+                        #ta_:forest27_start +  
+                        strata(step_id_))
+
+#Without step length and interaction
+m1 <- d1 %>% fit_issf(case_ ~ sl_ +  
+                        #ta_:forest27_start +  
+                        strata(step_id_))
+```
+
+
+```{r}
+#Plot steps
+
+m1 <- d1 %>% fit_issf(case_ ~ forest27_end + log_sl_ + sl_  + log_sl_:forest27_end + sl_:forest27_end + strata(step_id_))
+
+#Select the extent of the map to crop
+Extent <- t(cbind(range(d1$x1_,d1$x2_), range(d1$y1_,d1$y2_)))
+offset <- 100
+Extent <- Extent + rep(c(-offset,offset),each=2)
+
+
+par(mfrow=c(1,2))
+for (i in unique(d1$step_id_)){
+  
+  #Crop the map to a selected area
+  plot(crop(land_use,extent(Extent)),main=paste("Step id",i))
+  
+  #Subset each step
+  step.id.df<-subset(d1,d1$step_id_==i)
+  
+  #Put the starting point
+  points(step.id.df[1,"x1_"],step.id.df[1,"y1_"],col="yellow",pch=16,cex=1)
+
+  for (k in 2:nrow(step.id.df)){
+  
+    #Draw lines of the random steps
+  lines(step.id.df[k,c("x1_","x2_")],step.id.df[k,c("y1_","y2_")],col="black")
+  
+    }
+    lines(step.id.df[1,c("x1_","x2_")],step.id.df[1,c("y1_","y2_")],col="red")
+}
+
+#Draw line of the selected step
+for (i in seq(from=1,to=nrow(d1),by=random.steps+1)){
+  lines(d1[i,c("x1_","x2_")],d1[i,c("y1_","y2_")],col="red")
+  
+}
+
+```
+
+
+### Inspect model (Table 1)
+
+```{r}
+AIC(m1$model)
+summary(m1)
+s <- summary(m1$model)$coefficients
+s
+print(xtable::xtable(s, digits = 4,
+type = "latex",
+caption.placement = "top"))
+
+#Remove summary object
+rm(s)
+```
+
+
+### Adjusting parameters of Gamma distribution
+
+```{r}
+#Adjusting the shape parameter of the gamma distribution
+shape <- sl_shape(m1)
+scale <- sl_scale(m1)
+
+```
+
+## 1.4. Simulate space use
+##ADDED THIS CHUNK. ONLY RUN THIS CHUNK AND DO NOT RUN THE OTHER CHUNKS BETWEEN THE SIMULATION FUNCTION AND THESE CHUNK IF I WANT TO CHANGE THE POSITION OF THE BIRD TO STAR IN OTHER PATCH
+```{r}
+
+#This chunk is for obtaining the coordinates of the focal patch from Adam's data base and then figuring out the patch id in the croppped labeled map
+#Import data base with information about patches and xy locations of the patch
+patches.locations<-read.xlsx("Data bases/Information patches Costa Rica.xlsx",sheet=1)
+
+#Select columns with patch and coordinates information
+patches.locations<-patches.locations[,c("PATCH_ID","X","Y")]
+
+#Import data base with information about frequencies with patches
+frequencies.patches<-read.xlsx("Data bases/Frequencies patches.xlsx",sheet=1)
+
+#MErge the patches where birds were sampled with xy information
+frequencies.patches<-merge(frequencies.patches,patches.locations,by.x="PATCH",by.y="PATCH_ID",all=T)
+
+#Remove data base
+rm(patches.locations)
+
+#Subset the x and y locations of the non-native patch where I want to put the bird
+focal.patch<-subset(frequencies.patches,frequencies.patches$FREQ==392)[,c("X","Y")]
+
+#Set the extent of the new patch where I will do the simulation
+bounding.box<-data.frame(x=c(focal.patch$X+1000,focal.patch$X-1000),y=c(focal.patch$Y+1000,focal.patch$Y-1000))
+
+
+#Cropping the raster map for only a subset of it. 
+forest.raster_c <- crop(land_use, extent(bounding.box))
+
+#Make a raster that has the patch id
+forest.raster_c_labeled<-ConnCompLabel(forest.raster_c)
+
+#Obtain patch number
+focal.patch<-forest.raster_c_labeled[cellFromXY(forest.raster_c_labeled,focal.patch)]
+
+#CHECK WHAT IS INCLUDING IN THE MOVEMENT KERNEL SINCE I DO NOT UNDERSTAND IT VERY WELL
+mk <- movement_kernel(scale, shape, forest.raster_c) #It is including the scale and shape parameter. The map is forest.raster_c
+hk <- habitat_kernel(list(forest27 = coef(m1)["forest27_end"]), forest.raster_c) #forest.raster_c contians the map with the habitat information
+
+```
+
+
+### Prepare kernels. THESE CHUNKS WILL PUT THE BIRD IN THE PATCH WERE IT WAS CAPTURED
+```{r}
+forest.raster_c <- crop(land_use, amt::bbox(dat_1, spatial = TRUE, buff = 1e3)) #Cropping the raster map for only a subset of it. Here I would crop it each time there is a step.
+
+#CHECK WHAT IS INCLUDING IN THE MOVEMENT KERNEL SINCE I DO NOT UNDERSTAND IT VERY WELL
+mk <- movement_kernel(scale, shape, forest.raster_c) #It is including the scale and shape parameter. The map is forest.raster_c
+hk <- habitat_kernel(list(forest27 = coef(m1)["forest27_end"]), forest.raster_c) #forest.raster_c contians the map with the habitat information
+```
+
+```{r}
+#Make a raster that has the patch id
+forest.raster_c_labeled<-ConnCompLabel(forest.raster_c)
+```
+
+
+```{r}
+#This chunk is for obtaining the coordinates of the focal patch from Adam's data base and then figuring out the patch id in the croppped labeled map
+#Import data base with information about patches and xy locations of the patch
+patches.locations<-read.xlsx("Data bases/Information patches Costa Rica.xlsx",sheet=1)
+
+#Select columns with patch and coordinates information
+patches.locations<-patches.locations[,c("PATCH_ID","X","Y")]
+
+#Import data base with information about frequencies with patches
+frequencies.patches<-read.xlsx("Data bases/Frequencies patches.xlsx",sheet=1)
+
+#MErge the patches where birds were sampled with xy information
+frequencies.patches<-merge(frequencies.patches,patches.locations,by.x="PATCH",by.y="PATCH_ID",all=T)
+
+#Remove data base
+rm(patches.locations)
+
+#Subset information of x y location of the patch where I tracked the bird
+focal.patch<-subset(frequencies.patches,frequencies.patches$FREQ==id.freq)[,c("X","Y")] 
+
+#Obtain patch number
+focal.patch<-forest.raster_c_labeled[cellFromXY(forest.raster_c_labeled,focal.patch)]
+
+
+```
+
+Run replicate simulations:
+
+```{r}
+
+source("SSF simulation functions.R")
+
+num.sim.points.per.patch<-50
+num.sim.per.point<-1
+
+simulate.movement(focal.patch=focal.patch,
+                  tot.num.minutes=60,
+                  fix.rate=5,
+                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  map.full=land_use,
+                  map.cropped=forest.raster_c,
+                  map.cropped.labeled=forest.raster_c_labeled,
+                  name.output.dataframe=raw.results.emigration)
+```
+
+
+
+
+Plot the map and add simulated paths:
+```{r}
+
+source("SSF simulation functions.R")
+map.simulations(focal.patch=focal.patch,
+                num.sim.points.per.patch=num.sim.points.per.patch,
+                num.sim.per.point=num.sim.per.point,
+                dataframe.results=raw.results.emigration,
+                offset=1000,
+                map.full=land_use)
+
+```
+
+```{r}
+#Obtain data base with values aggregated by time and showing the proportion of fruit in each faith by time
+source("SSF simulation functions.R")
+final.database(name.input.database=raw.results.emigration,
+                         name.output.dataframe=results.emigration)
+
+#Export results to a csv file
+#write.csv(results.emigration,"borrar.csv",row.names=F)
+```
+
+
+```{r}
+source("SSF simulation functions.R")
+#Obtain the information from the list in a data base
+#raw.dataframe(focal.patch=focal.patch,
+#              name.input.database=raw.results.emigration,
+#              name.output.dataframe=raw.formated.results.emigration)
+
+```
+
+```{r}
+##Obtain the dispersal distance for each fix rate
+source("SSF simulation functions.R")
+dispersal.distance(focal.patch=focal.patch,
+                   name.input.database=raw.results.emigration)
+```
+
+
+```{r}
+#Obtain the information from the list in a data base including the seed dispersal distance
+raw.dataframe(for.seed.dispersal="Y",
+                focal.patch=focal.patch,
+                name.input.database=raw.results.emigration,
+                name.output.dataframe=raw.results.emigration.dispersal.distance)  
+
+```
+
+
+
+#DO NOT RUN IF I AM ONLY GOING TO ANALYZE SOME DATA
+```{r}
+write.csv(raw.results.emigration.dispersal.distance,paste("dispersal distance bird frequency ",id.freq,".csv",sep=""),row.names=F)
+
+library(ggplot2)
+library(dplyr)
+#Intra patch dispersal distance
+read.csv("dispersal distance all.csv") %>%
+  mutate(patch.size=case_when(focal.patch==39 ~ "csmall",
+            focal.patch==13 ~ "medium",
+            focal.patch==1 ~ "nbig")) %>% 
+  filter(same.patch>0) %>% 
+  filter(time==20 |
+           time==40 |
+           time==60) %>% 
+  mutate(time=as.factor(time)) %>% 
+  ggplot(aes(x=time,y=dispersal.distance,group=time)) +
+  geom_boxplot() +
+  facet_wrap(~patch.size)+
+  xlab("Gut passage time (minutes)") +
+  ylab("Dispersal distance (m)")
+ggsave("Graphs/Dispersal distance within patch.jpg")
+
+
+d<-read.csv("dispersal distance all.csv") %>%
+  mutate(patch.size=case_when(focal.patch==39 ~ "csmall",
+            focal.patch==13 ~ "medium",
+            focal.patch==1 ~ "nbig")) %>% 
+  filter(same.patch>0) %>% 
+  filter(time==20 |
+           time==40 |
+           time==60) %>% 
+  mutate(time=as.factor(time)) 
+
+library("nlme")
+#Model without random structure
+mod.1<-gls(dispersal.distance ~ patch.size+time +patch.size*time,method = "REML", data = d)
+summary(mod.1)
+
+
+
+
+read.csv("dispersal distance all.csv") %>%
+  mutate(patch.size=case_when(focal.patch==39 ~ "csmall",
+            focal.patch==13 ~ "medium",
+            focal.patch==1 ~ "nbig")) %>% 
+  filter(new.patch>0) %>% 
+  filter(time==20 |
+           time==40 |
+           time==60) %>% 
+  filter(patch.size!="nbig") %>% 
+  mutate(time=as.factor(time)) %>% 
+  ggplot(aes(x=time,y=dispersal.distance,group=time)) +
+  geom_boxplot() +
+  facet_wrap(~patch.size)+
+  xlab("Gut passage time (minutes)") +
+  ylab("Dispersal distance (m)")
+ggsave("Graphs/Dispersal distance between patches.jpg")
+
+
+  
+
+```
+
+
+
+```{r}
+
+library(ggplot2)
+raw.results.emigration.dispersal.distance %>%
+  filter(same.patch>0) %>% 
+  filter(time==20 |
+           time==40 |
+           time==60) %>% 
+  mutate(time=as.factor(time)) %>% 
+  ggplot(aes(x=time,y=dispersal.distance,group=time)) +
+  geom_boxplot() +
+  xlab("Gut passage time (minutes)") +
+  ylab("Dispersal distance (m)")
+ggsave(paste("Graphs/dispersal distance intrapatch bird frequency ",id.freq,".jpg"))
+```
+
+
+#Immigration
+
+
+```{r}
+#Crop map using the buffer function at the end
+#Crop the map to the extent I want
+#Copy cropped map with labels that I used before
+forest.raster_c_labeled_immigration<-forest.raster_c_labeled
+
+#Patches that are not part of the focal patch will be set to NA
+forest.raster_c_labeled_immigration[forest.raster_c_labeled_immigration != focal.patch]<-NA
+
+#I need to know the cells to obtain the coordinates from the cropped map so that I can use the complete map and make the buffer
+#Obtain coordinates from cell
+xy.focal.patch<-xyFromCell(forest.raster_c_labeled_immigration,which(forest.raster_c_labeled_immigration[] == focal.patch)[1])
+
+#I will set it to 1500 m while I analyze the data 
+max.dist.home.range<-750 #CHECK: I think it is not selecting the 1500 m radius, it is selecting more. Check it later
+
+#LAbel the complete forest map
+forest.raster_labeled<-ConnCompLabel(land_use)
+
+#Find focal patch on the complete map
+cell.focal.patch<-cellFromXY(forest.raster_labeled,xy.focal.patch)
+
+#Patches that are not part of the focal patch will be set to NA 
+forest.raster_labeled_immigration<-forest.raster_labeled
+forest.raster_labeled_immigration[forest.raster_labeled_immigration != forest.raster_labeled_immigration[cell.focal.patch]]<-NA
+
+#Checking that I am selecting the right patch
+plot(land_use)
+plot(forest.raster_c_labeled_immigration, add=TRUE, col="red")
+
+#Mke a buffer using the maximum home range distance
+Buffer <- buffer(forest.raster_labeled_immigration, width=max.dist.home.range)
+
+#Plot to double check
+plot(Buffer)
+plot(forest.raster_c_labeled_immigration, add=TRUE, col="red")
+
+#Crop the map to obtain the information of the extent
+immigration.map <- forest.raster_c_labeled_immigration * Buffer
+
+#Crop map to the extent of the buffer
+immigration.map<-crop(land_use,extent(immigration.map@extent))
+immigration.map.labeled<-crop(forest.raster_labeled,extent(immigration.map@extent))
+
+
+#Obtain patch code of the croped map
+focal.patch.immigration<-immigration.map.labeled[cellFromXY(immigration.map.labeled,xy.focal.patch)]
+
+#Obtain all the patches id from the croped map
+patches.immigration<-unique(immigration.map.labeled[])
+
+#Select all patches except the one with the focal patch
+patches.immigration<-subset(patches.immigration,patches.immigration>0 & patches.immigration!=focal.patch.immigration)
+```
+
+Run replicate simulations:
+
+```{r}
+
+source("SSF simulation functions.R")
+
+#This function simlates movement behavior of an animal and needs the following information 
+#focal.patch: the patches where the simulations will be made
+#focal.patch.immigration: this is the focal patch that indicates te patch where the seed should land to be considered an immigrated seed 
+#fix.rate: the time at which each point will be considered
+#num.sim.points.per.patch: number of simulations that will be made starting from each focal patch
+#num.sim.per.point: number of simulations that will be made per starting point
+#map.full: full map with vegetation cover
+#map.cropped: vegetation map cropped to the area where the simulation is going to be made
+#map.cropped.labeled: same as map.cropped but instead of having vegetation cover id it has patch id for each forest patch
+#name.output.dataframe: the name of the data base generated 
+
+
+#num.sim.points.per.patch<-1
+#num.sim.per.point<-1
+
+simulate.movement(focal.patch=patches.immigration,
+                  focal.patch.immigration=focal.patch.immigration,
+                  tot.num.minutes=60,
+                  fix.rate=5,
+                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  map.full=land_use,
+                  map.cropped=immigration.map,
+                  map.cropped.labeled=immigration.map.labeled,
+                  name.output.dataframe=raw.results.immigration)
+```
+
+
+Plot the map and add simulated paths:
+```{r}
+
+source("SSF simulation functions.R")
+map.simulations(focal.patch=patches.immigration,
+                num.sim.points.per.patch=num.sim.points.per.patch,
+                num.sim.per.point=num.sim.per.point,
+                dataframe.results=raw.results.immigration,
+                offset=2300,
+                map.full=land_use)
+
+#ADD CODE TO HIGHLIGHT FOCAL PATCH 
+
+```
+
+#Format the output data base
+
+```{r}
+
+source("SSF simulation functions.R")
+final.database(for.immigration="Y",
+               focal.patch=patches.immigration,
+               name.input.database=raw.results.immigration,
+                         name.output.dataframe=results.immigration)
+
+
+#save(raw.results.immigration,file="immigration results raw list focal patch 13 freq bird 851.Rdata")
+
+```
+
+```{r}
+
+total.fruits.simulation<-length(patches.immigration)*num.sim.points.per.patch*num.sim.per.point
+
+library("dplyr")
+#Subset rows were prop.immigrated > 0 for the 3 different times
+d<-results.immigration %>% 
+                    filter(prop.immigrated>0) %>% 
+                    filter(time==20 |
+                               time==40 |
+                               time==60) %>% 
+                    summarise(prop.seeds.same.patch=sum(same.patch)/total.fruits.simulation,
+                              prop.seeds.matrix=sum(matrix)/total.fruits.simulation,
+                              prop.seeds.new.patch=sum(new.patch)/total.fruits.simulation,
+                              prop.seeds.immigrated=sum(immigrated)/total.fruits.simulation) %>% as.matrix(.)
+
+jpeg(paste("Graphs/Immigration bird frequency ",id.freq,".jpg"),quality=100,width=1000,height=700)
+par(cex=1.5)
+barplot(d,main=paste("Id frequency ",id.freq),xlab="Seed faith",ylab="Proportion",names.arg=c("Focal patch","Matrix","New patch","Immigrated"),cex.names=1.5,cex.axis=1.5,cex.main=1.5,cex.lab=1.5)
+
+dev.off()
+
+
+```
+
+
+```{r}
+##Obtain the dispersal distance for each fix rate
+source("SSF simulation functions.R")
+dispersal.distance(focal.patch=patches.immigration,
+                   name.input.database=raw.results.immigration)
+```
+
+
+```{r}
+#Obtain the information from the list in a data base including the seed dispersal distance
+raw.dataframe(for.immigration="Y",
+              for.seed.dispersal="Y",
+                focal.patch=patches.immigration,#here I put the focal patches where the simulation started to estimate the immigration to the focal patch (which is 1) 
+                name.input.database=raw.results.immigration,
+                name.output.dataframe=patches.immigration.dispersal.distance)  
+
+```
+```{r}
+library(ggplot2)
+patches.immigration.dispersal.distance %>% 
+  filter(time==20 |
+           time==40 |
+           time==60) %>% 
+  ggplot(aes(x=dispersal.distance,y=immigrated)) +
+  geom_point(position = position_jitter(height = 0.1, width = 0), alpha = 0.5) +
+  geom_smooth(method = "glm", 
+    method.args = list(family = "binomial"), 
+    se = TRUE,col="red") +
+  facet_wrap(~time) +
+  xlab("Distance from source (m)") +
+  ylab("Probbility of immigration to focal patch")
+ggsave(paste("Graphs/distance from source bird frequency ",id.freq,".jpg"))
+
+patches.immigration.dispersal.distance %>% 
+  filter(time==20 |
+           time==40 |
+           time==60) %>%  
+  ggplot(aes(y=dispersal.distance)) +
+  geom_boxplot() +
+  facet_wrap(~time)
+
+```
+
+
+```{r}
+
+delete<-results.immigration %>% 
+  select("focal.patch","time","same.patch","matrix","new.patch","immigrated") %>% #Select columns that I need information
+  gather("faith","counts",c("same.patch","matrix","new.patch","immigrated")) %>% #You have to put the column name of the new column where the long levels will be stored (faith), column name where the results will be stored (counts), and then whaat columns you want to make in a long format and you leave out the columns that you want to use for the aggregate
+  group_by(time,faith) %>% 
+  summarise(counts=sum(counts)) %>% 
+  spread(faith, counts)
+  
+
+
+results.immigration.long<-melt(database.simulations[,c("focal.patch","time","same.patch","matrix","new.patch","immigrated")],id.vars=c("focal.patch","time"))
+
+results.immigration.long<-aggregate(results.immigration.long$value,by=list(faith=results.immigration.long$variable,
+                                                                           time=results.immigration.long$time),FUN=sum)
+
+#subset(results.immigration.long,results.immigration.long$time==20)
+
+delete<-spread(results.immigration.long, faith, x)
+
+delete<-cbind(delete,prop.table(as.matrix(delete[,c("same.patch","matrix","new.patch","immigrated")]),1))
+
+#write.csv(delete,"borrar.csv",row.names=F)
+
+```
+
+
+
+
+
+
+#MULTIPLE BIRDS
+
+## FORMAT DATA BASE FOR ANALYSIS
+
+http://tlocoh.r-forge.r-project.org/tips/isopleth_overlap_auto.html
+
+## Load required packages
+
+```{r, include=FALSE}
+#Load libraries
+library("openxlsx")
+library("NISTunits")
+library("rgdal")
+library("ggmap")
+library("SDMTools")
+library("raster")
+library("MetaLandSim") # need to run code source("https://bioconductor.org/biocLite.R") biocLite("Biobase")
+library("rgeos")
+library("maps")
+library("maptools")
+library("geosphere")
+library("amt")
+library("tidyr")
+library("cowplot")
+library("reshape2")
+library("dplyr")
+library("ggplot2")
+library("ggrepel")
+```
+
+
+```{r, include=FALSE}
+#THIS CHUNK OF CODE I COPIED IT FROM THE BEGINNING BECAUSE IF NOT YOU NEED TO RUN SOME CHUNKS ABOVE. 
+
+#Remove anything on workspace
+rm(list=ls(all=TRUE))
+
+#Source functions
+source("Clean SSF data base.R") #I just dpulicated the code I used for cleaning the tleemtry data just in case I modified the latter, so to avoid that the changes affect the present code 
+
+#Fuction for cleaning telemetry data base
+clean.tel.data()
+
+#Copy data base
+dat<-prueba
+
+#Select only columns of interest
+dat<-dat[,c("LOCATION.X","LOCATION.Y","TIME","FREQ")]
+
+#Rename columns
+colnames(dat)<-c("x","y","t","id")
+
+aggregate(dat,by=list(dat$id),FUN=length) %>% 
+  arrange(-id)
+  id.freq<-472
+
+rm(clean.freq,clean.tel.data)
+
+### Prepare environmental data
+
+#land_use <- raster("data/landuse_study_area.tif")
+#Load raster
+land_use<-raster("Map layers/Aug27_15rasters/forest27")
+m<-matrix(c(0,1,0,
+            1,2,1),ncol=3,byrow=T) #Make a matrix to reclsify values from 1 to 1 and the new value is 0
+land_use<-reclassify(land_use,m)
+#land_use2 <- land_use == 2
+names(land_use) <- "forest27"
+
+#Remove matrix used to reclasiffy values
+rm(m)
+```
+
+
+```{r}
+#Read excel data base of patch id, patch size and % forest
+#patches<-read.xlsx("/home/luis/Desktop/Doctorado/Capture_sites information.xlsx",sheet=1)
+patches<-read.xlsx("Data bases/Information patches Costa Rica.xlsx",sheet=1)
+freq.patches<-read.xlsx("Data bases/Frequencies patches.xlsx",sheet=1)
+
+#Keep columns of interest
+patches<-patches[,c(1,4:6)]
+
+#Rename columns
+colnames(patches)<-c("Patch","percent_forest","elevation","patch_size") #There is no information on patch 15, 27, 28, 35, 62, 63. Patches 12 and 39 are on the database but there is no information since they have NA
+
+freq.patches %>% 
+  mutate(Patch=PATCH) %>%
+  select(-PATCH) %>% 
+  inner_join(patches,by="Patch") %>% 
+  mutate(log.patch_size=log(patch_size)) %>% 
+  ggplot(aes(x=log.patch_size,y=percent_forest)) +
+  geom_point() +
+  geom_label_repel(aes(label = FREQ),
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50')
+
+#Obtain information of each individual patch, patch size, percent forest, elevation and sampled year that I have
+
+
+```
+
+
+```{r}
+#Create a data frame with id as the first column and the second column has a data frame inside it with the x,y and time (t)
+dat_all_original <- dat %>% nest(-id)
+
+unique(dat_all_original$id)
+
+dat_all<-subset(dat_all_original,dat_all_original$id==232 |
+                  dat_all_original$id==881 |
+                  dat_all_original$id==942 |
+                  dat_all_original$id==312 |
+                  dat_all_original$id==171 |
+                  dat_all_original$id==352 |
+                  dat_all_original$id==511 |
+                  dat_all_original$id==551 |
+                  dat_all_original$id==731 |
+                  dat_all_original$id==760 |
+                  dat_all_original$id==851 |
+                  dat_all_original$id==881 |
+                  dat_all_original$id==973 |
+                  dat_all_original$id==392 |
+                  dat_all_original$id==202) 
+
+#dat_all_original$id==472
+#dat_all_original$id==910
+#dat_all_original$id==821
+#dat_all_original$id==791
+#dat_all_original$id==702
+#dat_all_original$id==672
+#dat_all_original$id==631
+#dat_all_original$id==591                 
+#dat_all_original$id==273) #Just added this one
+#dat_all_original$id==432) #Just added this one
+#432 only moved in forested area, so the interaction terms of step length and habitat selection between habitats is not working since there are no steps in the matrix
+#273 has only 4 movments in the forest, so the interaction is not working
+#591 only moved in MATRIX area, so the interaction terms of step length and habitat selection between habitats is not working since there are no steps in the FOREST
+#631 MOSTLY moved in MATRIX area, so the interaction terms of step length and habitat selection between habitats is not working since there IS 1 step in the FOREST
+#672 MOSTLY moved in MATRIX area, so the interaction terms of step length and habitat selection between habitats is not working since there IS 0 step in the FOREST
+#702 MOSTLY moved in MATRIX area, so the interaction terms of step length and habitat selection between habitats is not working since there IS 0 step in the FOREST
+#791 MOSTLY moved in MATRIX area, so the interaction terms of step length and habitat selection between habitats is not working since there IS 0 step in the FOREST
+#821 MOSTLY moved in forest area, so the interaction terms of step length and habitat selection between habitats is not working since there IS 0 step in the matrix
+#910 MOSTLY moved in MATRIX area, so the interaction terms of step length and habitat selection between habitats is not working since there IS 0 step in the FOREST
+#472 is giving me a very unsual value of the parameter and I do not know why
+
+#273, 352,511 472, 591, 672, 702, 791, 821, 973, 202 cannot fit model
+#312, 171,731, 760, 392, 631, 851 give NA or INF values on estimate or confidence intervals
+```
+
+```{r}
+#Make a track for each individual
+dat_all <- dat_all %>%
+mutate(trk = lapply(data, function(d) {
+mk_track(d, x, y, t )
+}))
+
+#I am using this data frame that has all the individuals sampled to extract covariates of habitat utilization, step length and turning angle
+dat_all_original<- dat_all_original %>%
+mutate(trk = lapply(data, function(d) {
+mk_track(d, x, y, t )
+}))
+#This is the original code from the vignete. I took out some lines because it was not working with my code. I am leaving it here just as a reference to know if something it is not working it might be because I did not consider some lines. 
+#dat_all <- dat_all %>%
+#mutate(trk = lapply(data, function(d) {
+#mk_track(d, x, y, t, crs = sp::CRS("+init=epsg:4326")) %>%
+#transform_coords(sp::CRS("+init=epsg:5070"))
+#}))
+```
+
+```{r}
+#Summarize sampling rate of all individuals
+dat_all %>% mutate(sr = lapply(trk, summarize_sampling_rate)) %>%
+select(id, sr) %>% unnest
+```
+
+#make tracks
+```{r}
+
+
+m2 <- dat_all %>% mutate(ssf = lapply(trk, function(x) {
+x %>% 
+    track_resample(rate = minutes(5), tolerance = minutes(2)) %>%
+    filter_min_n_burst(min_n = 3) %>%
+    steps_by_burst() %>% 
+    random_steps() %>%
+    extract_covariates(land_use, where = "both") %>% 
+    mutate(forest27_start = factor(forest27_start, levels = c(0, 1), labels = c("matrix", "forest"))) %>% #factor (forest27_start you have to check the name of the column of the data base that is generated one step before (in this case is forest27_start). Just run the 2 precedent pipe lines and a tibble with the names of the column will appeaar)
+    mutate(forest27_end = factor(forest27_end, levels = c(0, 1), labels = c("matrix", "forest"))) %>% 
+    mutate(log_sl_ = log(sl_)) 
+}))
+
+#Analysis including all birds
+m2o<- dat_all_original %>% mutate(ssf = lapply(trk, function(x) {
+x %>% 
+    track_resample(rate = minutes(5), tolerance = minutes(2)) %>%
+    filter_min_n_burst(min_n = 3) %>%
+    steps_by_burst() %>% 
+    random_steps() %>%
+    extract_covariates(land_use, where = "both") %>% 
+    mutate(forest27_start = factor(forest27_start, levels = c(0, 1), labels = c("matrix", "forest"))) %>% #factor (forest27_start you have to check the name of the column of the data base that is generated one step before (in this case is forest27_start). Just run the 2 precedent pipe lines and a tibble with the names of the column will appeaar)
+    mutate(forest27_end = factor(forest27_end, levels = c(0, 1), labels = c("matrix", "forest"))) %>% 
+    mutate(log_sl_ = log(sl_)) 
+}))
+```
+
+#Plot habitat selection by bird (includes all birds)
+```{r}
+d<- m2o %>% 
+  select(id, ssf) %>% 
+  unnest %>%
+  select(id,case_,step_id_,sl_,ta_,forest27_start,forest27_end,log_sl_) %>% 
+  filter(case_==TRUE) %>% 
+  ungroup()
+
+
+counts<-table(d$forest27_end,d$id)
+par(mar=c(5,5,2,9),xpd=T)
+barplot(counts,xlab="Bird id",ylab="Proportion of GPS points per habitat",col=c("grey50","grey"),las=2)
+
+legend(x=29,y=0.8,legend=c("Non-forested area","Forested area"),fill=c("grey","grey50"),bty="n")
+
+counts<-data.frame(prop.table(t(counts),margin=1))
+
+
+counts<-cbind(counts[1:24,c(1,3)],counts[25:48,3])
+colnames(counts)<-c("freq","matrix","forest")
+counts<-counts[order(-counts$matrix),]
+counts.matrix<-t(data.matrix(counts[,2:3]))
+colnames(counts.matrix)<-counts[,1]
+
+jpeg("Graphs/forest end by id frequency.jpg",quality=100,width=1000,height=700)
+
+par(mar=c(5,5,2,9),xpd=T)
+barplot(counts.matrix,xlab="Bird id",ylab="Proportion of GPS points per habitat",col=c("grey","grey50"),las=2)
+
+legend(x=29,y=0.8,legend=c("Non-forested area","Forested area"),fill=c("grey","grey50"),bty="n")
+
+
+dev.off()
+
+
+
+#Step length by bird
+d %>% 
+  mutate(id=as.factor(id)) %>% 
+  ggplot(aes(x=id,y=log_sl_)) +
+  geom_boxplot() +
+  xlab("Bird id") +
+  ylab("Log step length")
+ggsave("Graphs/Step length by bird.jpg")
+
+
+#Turning angle by bird
+d %>% 
+  mutate(id=as.factor(id)) %>% 
+  ggplot(aes(x=id,y=ta_)) +
+  geom_boxplot() +
+  xlab("Bird id") +
+  ylab("Turning angle") +
+  geom_hline(yintercept=c(-180,180),linetype="dashed")
+ggsave("Graphs/Turning angle by bird.jpg")
+
+ 
+
+```
+
+#LM for differences between step length in patches
+
+```{r}
+library("GGally")
+d<-freq.patches %>% 
+  inner_join(d,by=c("FREQ"="id")) %>% 
+  inner_join(patches,by=c("PATCH"="Patch")) %>% 
+  mutate(logpatch_size=log(patch_size)) %>% 
+  select(FREQ,log_sl_,logpatch_size,percent_forest,elevation) 
+
+d %>% 
+  ggpairs(upper=list(continuous="points"),lower=list(continuous="cor"))
+
+
+library("nlme")
+#Model without random structure
+mod.1<-gls(log_sl_ ~logpatch_size+percent_forest+elevation,method = "REML", data = d)
+summary(mod.1)
+
+
+#GLMM nesting frequency
+mod.2<-lme(log_sl_~logpatch_size+percent_forest+elevation,random = ~1 | FREQ,data=d,method="REML")
+summary(mod.2)
+
+#without patch size
+mod.3<-lme(log_sl_~percent_forest+elevation,random = ~1 | FREQ,data=d,method="REML")
+summary(mod.3)
+
+#Without percent of forest
+mod.4<-lme(log_sl_~elevation,random = ~1 | FREQ,data=d,method="REML")
+summary(mod.4)
+
+library("MuMIn")
+Weights(AIC(mod.1,mod.2,mod.3,mod.4))
+
+d %>% 
+  ggplot(aes(x=elevation,y=log_sl_)) +
+  geom_point() + 
+  geom_smooth(method="lm",col="red")
+```
+
+
+
+#Fit models
+```{r}
+#This was the original model, which used log_sl and sl in the same model. The authors did it that way, although it is weird that to variables that are transformed are used in the same model. I will use only one of them to fit the model
+#m2 <- m2 %>% mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + sl_  + log_sl_:forest27_end + sl_:forest27_end + strata(step_id_))))
+
+m2 <- m2 %>% mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + ta_  + log_sl_:forest27_end + ta_:forest27_end + strata(step_id_))))
+
+
+d2 <- m2 %>% mutate(coef = map(fit, ~ broom::tidy(.x$model))) %>%
+select(id, coef) %>% unnest %>%
+mutate(id = factor(id),
+       term=if_else(term=="forest27_endforest","Habitat selection",term),
+       term=if_else(term=="log_sl_","Log step length",term),
+       term=if_else(term=="ta_","Turning angle",term),
+       term=if_else(term=="forest27_endforest:log_sl_","Log step length by habitat",term),
+       term=if_else(term=="forest27_endforest:ta_","Turning angle by habitat",term)) %>% group_by(term) %>%
+summarize(
+mean = mean(estimate),
+ymin = mean - 1.96 * sd(estimate),
+ymax = mean + 1.96 * sd(estimate)
+)
+```
+
+### Plot
+
+```{r}
+d2$x <- 1:nrow(d2)
+data <- m2 %>% mutate(coef = map(fit, ~ broom::tidy(.x$model))) %>%
+select(id, coef) %>% unnest %>% 
+mutate(id = factor(id)) #filter(conf.low!=-Inf)  %>% #I added this line since there are -inf values on the data set 
+
+
+data %>% 
+  mutate(term=if_else(term=="forest27_endforest","Habitat selection",term),
+         term=if_else(term=="log_sl_","Log step length",term),
+         term=if_else(term=="ta_","Turning angle",term),
+         term=if_else(term=="forest27_endforest:log_sl_","Log step length by habitat",term),
+         term=if_else(term=="forest27_endforest:ta_","Turning angle by habitat",term)) %>% 
+  ggplot(., aes(x = term, y = estimate, group = id, col = id)) +
+# geom_rect(mapping = aes(xmin = x - .4, xmax = x + .4, ymin = ymin,
+# ymax = ymax, y = mean), data = d2 %>% mutate(x = as.numeric(x)), inherit.aes = FALSE,
+# fill = "grey90") +
+geom_pointrange(aes(ymin = conf.low, ymax = conf.high),
+position = position_dodge(width = 0.7), size = 0.8)  +
+  geom_errorbar(data = d2, aes(x = term, y = mean, ymin = mean, ymax = mean), inherit.aes = FALSE,
+size = 1) +
+geom_hline(yintercept = 0, lty = 2) +
+labs(x = "Parameters", y = "Relative Selection Strength") +
+theme_light() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    #+
+#scale_x_discrete(labels = c("Developed (open)", "Developed (other)", "Natural", "Crops","Other","Step length"))
+#p1
+#ggsave("img/fig_all_animals.pdf", width = 24, height = 12, units = "cm")
+#ggsave("fig_all_animals_parameters_luis.pdf", width = 24, height = 12, units = "cm")
+ggsave("Graphs/Multi bird parameters.jpg")
+
+#I think that if estimate of habitat selection is higher than 0, then it tends to select for forested areas and the opposite
+
+data %>% 
+  filter(term=="forest27_endforest") %>% 
+  ggplot(aes(x=estimate)) +
+  geom_histogram(bins=3)
+
+```
+#I COPIED THE CODE FROM ABOVE BUT I AM GOING TO ADD BIRDS TO MAKE THE PCA
+```{r}
+#Create a data frame with id as the first column and the second column has a data frame inside it with the x,y and time (t)
+dat_all_original <- dat %>% nest(-id)
+
+#dat_all<-subset(dat_all_original,dat_all_original$id==232 |
+#                  dat_all_original$id==881 |
+#                  dat_all_original$id==942 |
+#                  dat_all_original$id==312 |
+#                  dat_all_original$id==171 |
+#                  dat_all_original$id==731 |
+#                  dat_all_original$id==760 |
+ #                 dat_all_original$id==392 |
+#                  dat_all_original$id==631 |
+#                  dat_all_original$id==851)
+
+unique(dat_all_original$id)
+
+dat_all<-subset(dat_all_original,dat_all_original$id==232 |
+                  dat_all_original$id==881 |
+                  dat_all_original$id==942 |
+                  dat_all_original$id==392 |
+                  dat_all_original$id==851 |
+                  dat_all_original$id==312 | 
+                  dat_all_original$id==171 |
+                  dat_all_original$id==352)
+
+
+#273, 352,511 472, 591, 672, 702, 791, 821, 973, 202 cannot fit model
+#312, 171,731, 760, 392, 631, 851 give NA or INF values on estimate or confidence intervals
+```
+
+```{r}
+#Make a track for each individual
+dat_all <- dat_all %>%
+mutate(trk = lapply(data, function(d) {
+mk_track(d, x, y, t )
+}))
+
+#This is the original code from the vignete. I took out some lines because it was not working with my code. I am leaving it here just as a reference to know if something it is not working it might be because I did not consider some lines. 
+#dat_all <- dat_all %>%
+#mutate(trk = lapply(data, function(d) {
+#mk_track(d, x, y, t, crs = sp::CRS("+init=epsg:4326")) %>%
+#transform_coords(sp::CRS("+init=epsg:5070"))
+#}))
+```
+
+```{r}
+#Summarize sampling rate of all individuals
+dat_all %>% mutate(sr = lapply(trk, summarize_sampling_rate)) %>%
+select(id, sr) %>% unnest
+```
+
+```{r}
+
+
+m2 <- dat_all %>% mutate(ssf = lapply(trk, function(x) {
+x %>% 
+    track_resample(rate = minutes(5), tolerance = minutes(2)) %>%
+    filter_min_n_burst(min_n = 3) %>%
+    steps_by_burst() %>% 
+    random_steps() %>%
+    extract_covariates(land_use, where = "both") %>% 
+    mutate(forest27_start = factor(forest27_start, levels = c(0, 1), labels = c("matrix", "forest"))) %>% #factor (forest27_start you have to check the name of the column of the data base that is generated one step before (in this case is forest27_start). Just run the 2 precedent pipe lines and a tibble with the names of the column will appeaar)
+    mutate(forest27_end = factor(forest27_end, levels = c(0, 1), labels = c("matrix", "forest"))) %>% 
+    mutate(log_sl_ = log(sl_)) 
+}))
+
+
+m2 <- m2 %>% mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + sl_  + log_sl_:forest27_end + sl_:forest27_end + strata(step_id_))))
+
+
+
+d2 <- m2 %>% mutate(coef = map(fit, ~ broom::tidy(.x$model))) %>%
+select(id, coef) %>% unnest %>%
+mutate(id = factor(id)) %>% group_by(term) %>%
+summarize(
+mean = mean(estimate),
+ymin = mean - 1.96 * sd(estimate),
+ymax = mean + 1.96 * sd(estimate)
+)
+```
+```{r}
+d2$x <- 1:nrow(d2)
+data <- m2 %>% mutate(coef = map(fit, ~ broom::tidy(.x$model))) %>%
+select(id, coef) %>% unnest %>% 
+mutate(id = factor(id)) #filter(conf.low!=-Inf)  %>% #I added this line since there are -inf values on the data set 
+
+data %>% ggplot(., aes(x = term, y = estimate, group = id, col = id)) +
+# geom_rect(mapping = aes(xmin = x - .4, xmax = x + .4, ymin = ymin,
+# ymax = ymax, y = mean), data = d2 %>% mutate(x = as.numeric(x)), inherit.aes = FALSE,
+# fill = "grey90") +
+geom_pointrange(aes(ymin = conf.low, ymax = conf.high),
+position = position_dodge(width = 0.7), size = 0.8)  +
+  geom_errorbar(data = d2, aes(x = term, y = mean, ymin = mean, ymax = mean), inherit.aes = FALSE,
+size = 1) +
+geom_hline(yintercept = 0, lty = 2) +
+labs(x = "Parameters", y = "Relative Selection Strength") +
+theme_light() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    #+
+#scale_x_discrete(labels = c("Developed (open)", "Developed (other)", "Natural", "Crops","Other","Step length"))
+#p1
+#ggsave("img/fig_all_animals.pdf", width = 24, height = 12, units = "cm")
+#ggsave("fig_all_animals_parameters_luis.pdf", width = 24, height = 12, units = "cm")
+#ggsave("Mullt bird parameters.jpg")
+```
+
+
+```{r}
+d2$x <- 1:nrow(d2)
+data <- m2 %>% mutate(coef = map(fit, ~ broom::tidy(.x$model))) %>%
+select(id, coef) %>% unnest %>% 
+mutate(id = factor(id)) #filter(conf.low!=-Inf)  %>% #I added this line since there are -inf values on the data set 
+
+
+```
+
+
+
+```{r}
+d<-data %>% 
+  select(c("id","term","estimate")) %>% 
+  spread(.,term,estimate)
+
+library("ggfortify")
+
+d %>% 
+  select(-id) %>% 
+  drop_na() %>% 
+  prcomp(scale=T) %>% 
+  autoplot(loadings=T,loadings.label=T,label=T,label.size=5) +
+  geom_hline(yintercept=0,linetype=2) + 
+  geom_vline(xintercept=0,linetype=2)
+ggsave("Multi bird pca.jpg")
+
+d %>% 
+  select(-id) %>% 
+  drop_na() %>% 
+  kmeans(3) %>% 
+  autoplot(data=d %>% select(-id) %>% drop_na(),size=2,label=T,label.size=10,frame=T) +
+  geom_hline(yintercept=0,linetype=2) + 
+  geom_vline(xintercept=0,linetype=2) 
+  ggsave("Mullt bird K means.jpg")
+
+data %>%
+  ggplot(aes(x=estimate)) +
+  geom_histogram(bins=10) +
+  facet_wrap(~term)
+```
+
