@@ -1,0 +1,468 @@
+---
+title: "Telemetry analysis clay colored thrush"
+author: "Luis Antonio Arias Medellin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Load required packages
+
+```{r, include=FALSE}
+#Load libraries
+library("openxlsx")
+library("NISTunits")
+library("rgdal")
+library("ggmap")
+library("SDMTools")
+library("raster")
+library("MetaLandSim") # need to run code source("https://bioconductor.org/biocLite.R") biocLite("Biobase")
+library("rgeos")
+library("maps")
+library("maptools")
+library("geosphere")
+library("tlocoh") #Install using #http://tlocoh.r-forge.r-project.org/manual_install.html instructions and 
+#https://r-forge.r-project.org/R/?group_id=1622 ZIP FILE
+#Ubuntu
+#http://stackoverflow.com/questions/15248815/rgdal-package-installation for rgdal
+#You have also to install packages rgeos and pbapply
+#http://tlocoh.r-forge.r-project.org/manual_install.html step 5 at bottom of web page for tlocoh
+```
+
+## FORMAT DATA BASE FOR ANALYSIS
+
+http://tlocoh.r-forge.r-project.org/tips/isopleth_overlap_auto.html
+
+```{r, include=FALSE}
+
+#Remove anything on workspace
+rm(list=ls(all=TRUE))
+
+#Set working directory
+#setwd("Z:/Data bases")
+#setwd("/media/ResNAS/Data bases")
+
+#Source functions
+#source("Z:/R code/Telemetry_analysis_clay_colored_thrush_functions.R")
+#source("Telemetry_analysis_clay_colored_thrush_functions_a_method.R")
+source("Telemetry_analysis_clay_colored_thrush_functions_a_method_HW.R")
+source("Clean telemetry data base.R")
+
+#Fuction for cleaning telemetry data base
+clean.tel.data()
+
+#Problems
+#312 (10) because points are very separated and do not know if they are ok
+#881 (26) 910, 672 (40) 760 (29) 702, 591 (49) error with time stamps
+#Missing info from patch 431 (28)
+
+
+#Done 821 (33) 851 (56) 472 (24) 631 (32) 942 (53) 171 (58) 232 (10) 273 (31)
+#511 (34 weird points) 202 (36) 
+
+
+
+#Table of frequency of birds that were followed
+#table(prueba$FREQ) #24 birds with frequency
+#dim(table(prueba$FREQ))
+#Mean and sd that birds were followed
+sampling<-aggregate(prueba,by=list(prueba$FREQ,prueba$DATE),FUN=length)
+sampling<-sampling[order(sampling$Group.1),]
+sampling$days<-1
+sampling_aggregate<-aggregate(sampling$days,by=list(sampling$Group.1),FUN=sum)
+summary(sampling_aggregate[-13,])
+sd(sampling_aggregate[-13]$x)
+
+#Number of points obtained per individual
+points<-prueba
+points$num<-1
+points<-aggregate(points$num,by=list(points$FREQ),FUN=sum)
+points
+#summary(points$x)
+sd(subset(points,points$x>1)$x)
+
+
+hours<-prueba
+hours$follow<-difftime(hours$STOP,hours$START,units="hours")
+hours<-unique(hours[c("FREQ","DATE","follow")])
+hours[order(hours$FREQ),]
+hours_sum<-aggregate(hours$follow,by=list(hours$FREQ),FUN=sum)
+#summary(as.numeric(hours_sum$x))
+
+#FREQ 821: July 14 nobody sampled a bird
+#FREQ 942: July 27 and 29 were sampled by Mau but the information is not in data base
+#FREQ 171:  Aug 3 was not sampled but Mau took information and it is not in the data base
+#FREQ 973: on July 20 was followed but eaten by a hawk. The radio transmitter was
+#recovered and used for other individual followed in August.
+#FREQ 392: July 28 was not included and was followed by Mau
+#FREQ 273: Aug 5 and 6 was not included and was followed by Tocho and Mau, respectively
+#FREQ 472: was followed on Aug 12 but in data base it says Aug 13
+#FREQ 511: Aug 9 was sampled by Mau but it is not in the data base
+#FREQ 202: followed on Aug 19 and is not in data base but Aug 20 is on data base. Maybe typing mistake
+#FREQ 791: followed on Aug 19 and is not in data base but Aug 20 is on data base. Maybe typing mistake
+#FREQ 910: followed by Luis but not in data base. In calendar I do not have the date in which I followed it
+#FREQ 672: Aug 19 followed by Mau bot it is not in data base
+#FREQ 760: Aug 27 and 29 followed by Luis and Mau respectively but no in data base
+#Frequ 591: followed Sept 9 but not in data base but Sept 8 is in data base althgough not followed on that day. Maybe typing mistake
+
+#table(format(subset(prueba,prueba$FREQ==591)$DATE,"%B-%d"))
+#subset(prueba,prueba$FREQ==821 & prueba$DATE=="2016-07-14")[,1:11]
+#subset(prueba,prueba$FREQ==942)[,1:11]
+
+#table(prueba$FREQ,prueba$DATE)
+
+#Merge frequency data with patch id information
+#Read excel data base of patch id, patch size and % forest
+#freq_patches<-read.xlsx("Frequencies patches.xlsx",sheet=1)
+freq_patches<-read.xlsx("Data bases/Frequencies patches.xlsx",sheet=1)
+
+#Merge patches with elevation with frequencies
+prueba<-merge(prueba,freq_patches,by="FREQ",all=F)
+
+#
+aggregate(PATCH ~ FREQ, data = prueba, FUN = length)
+
+
+#This part is for knowing the difference between GPS observations taken consecutively
+times<-data.frame(times=as.numeric((prueba$MOVE_TIME-prueba$TIME)/60)) 
+
+times<-ifelse(times$times>=0,times$times,NA)
+boxplot(times)
+hist(times,breaks=15,freq=F)
+summary(times)
+  
+
+```
+
+# HW: prepare tables with results
+
+```{r}
+#THIS IS ONLY EXECUTED HERE SINCE WE ARE GOING TO USE THE SAME VALUE AND RASTER FOR ALL THE SCRIPT
+#Load raster
+forest<-raster("Map layers/Aug27_15rasters/forest27")
+
+#****This chunk of code is only executed for the first individual to generate the data frame and then I will use only the functions I have for each specific part****#
+#Obtain the radius of the maximum home range. I inputed the value by myself. 
+#max_area_buffer<-sqrt(49744.58/pi)
+#max_area_buffer<-sqrt(109566.7814/pi)   # HW: largest area
+#max_area_buffer<-571.6229                # HW: half of largest a.value
+
+Frequencies <- unique(prueba$FREQ)
+# HW: Prepare empty data frame:
+
+areas <- data.frame(matrix(NA, 
+                nrow=length(Frequencies), ncol=9, 
+                dimnames=list(Frequencies, c("PATCH_ID", "FREQ",
+                         "AREA", "a", "n_points",
+                         "prop.landscape1", "mean.patch.area1",
+                         "prop.landscape2", "mean.patch.area2"))))
+```
+
+# HW: Step 1 - Check data
+
+For each frequency, check data and drop observations that are invalid, e.g. duplicates. 
+
+```{r, include=FALSE}
+clean.freq()
+```
+
+# HW: Step 2 - Get number of points, maximum distance a, and area of 95% homerange
+
+```{r, include=FALSE}
+#Convert vector of coordinates to coordinates format
+utm_formated<-prueba[,6:7]
+utm_formated<-coordinates(utm_formated)
+colnames(utm_formated)<-c("x","y")
+
+LHS_data <- LXY_data <- list()
+#[-c(10, 13, 16, 19)])
+for(i in c(1:length(Frequencies))[-c(14,17,18)])
+{
+  lxy_data<-xyt.lxy(xy=utm_formated[prueba$FREQ==Frequencies[i],], 
+                  dt=prueba$TIME[prueba$FREQ==Frequencies[i]],
+                  id=prueba$FREQ[prueba$FREQ==Frequencies[i]], 
+                  show.dup.dt=T,
+                  proj4string=CRS("+proj=utm +north +zone=17 +ellps=WGS84"))
+
+  #Summary of the lxy object created
+  #summary(lxy_data)
+  
+  areas$n_points[i] <- sum(prueba$FREQ==Frequencies[i])
+  areas$FREQ[i] <- Frequencies[i]
+  areas$PATCH_ID[i] <- prueba$PATCH[prueba$FREQ==Frequencies[i]][1]
+  
+  areas$a[i] <- a.value <- max(pointDistance(lxy_data[[1]]@coords,lonlat=F))
+  #I don't know why I have to add this line to be able to run the next line
+  LXY_data[[i]] <- lxy_data <- lxy.nn.add(lxy_data, s=0, a=a.value)
+  
+  lhs_data <- lxy.lhs(lxy_data,a=a.value,s=0)
+
+  #Add isopleths based on utilization
+  LHS_data[[i]] <- lhs_data <-lhs.iso.add(lhs_data)
+  
+  #Plot each convex hull and save it in a jpg file
+
+  jpeg(paste("Graphs/",Frequencies[i],"gogole_plot.jpg",sep=""),
+    #   width=1000, height=1000, quality=100)
+  par(cex=3)
+  plot(lhs_data, iso=T, a=a.value, allpts=T, cex.allpts=1, 
+       col.allpts="gray30",ufipt=F)
+  dev.off()
+  #return(plot(lhs_data, iso=T, record=F, ufipt=F))
+}
+
+#There is an error in certain frequencies that stops the scripts. For those specific frequencies I added to the xyt.lxy function the part that says tau.diff.max=0. I do not know what it means but at least it runs.
+
+for(i in c(1:length(Frequencies))[c(14,17,18)])
+{
+
+  lxy_data<-xyt.lxy(xy=utm_formated[prueba$FREQ==Frequencies[i],], 
+                  dt=prueba$TIME[prueba$FREQ==Frequencies[i]],
+                  id=prueba$FREQ[prueba$FREQ==Frequencies[i]], 
+                  show.dup.dt=T,
+                  proj4string=CRS("+proj=utm +north +zone=17 +ellps=WGS84"),tau.diff.max=0)
+
+  #Summary of the lxy object created
+  #summary(lxy_data)
+  
+  areas$n_points[i] <- sum(prueba$FREQ==Frequencies[i])
+  areas$FREQ[i] <- Frequencies[i]
+  areas$PATCH_ID[i] <- prueba$PATCH[prueba$FREQ==Frequencies[i]][1]
+  
+  areas$a[i] <- a.value <- max(pointDistance(lxy_data[[1]]@coords,lonlat=F))
+  #I don't know why I have to add this line to be able to run the next line
+  LXY_data[[i]] <- lxy_data <- lxy.nn.add(lxy_data, s=0, a=a.value)
+  
+  lhs_data <- lxy.lhs(lxy_data,a=a.value,s=0)
+
+  #Add isopleths based on utilization
+  LHS_data[[i]] <- lhs_data <-lhs.iso.add(lhs_data)
+  
+  #Plot each convex hull and save it in a jpg file
+
+  jpeg(paste("Graphs/",Frequencies[i],"gogole_plot.jpg",sep=""),
+       width=1000, height=1000, quality=100)
+  par(cex=3)
+  plot(lhs_data, iso=T, a=a.value, allpts=T, cex.allpts=1, 
+       col.allpts="gray30",ufipt=F)
+  dev.off()
+  #return(plot(lhs_data, iso=T, record=F, ufipt=F))
+}
+
+
+areas$n_points
+areas$a
+```
+
+# HW: Step 3 - Get statistics for buffer
+
+```{r, echo =FALSE}
+
+max_area_buffer <- max(areas$a / 2, na.rm=TRUE)
+#max_area_buffer <- sort(areas$a, decreasing=TRUE)[2] / 2
+#max_area_buffer <- 1000 
+
+isopleths.birds<-list()
+
+for(i in c(1:length(Frequencies)))#[-c(10, 13, 16, 19)])
+{
+  #Select hulls and isopleths when a=a.value 
+  lhs.a<-lhs.select(LHS_data[[i]], a=areas$a[i])
+  isolevels_data<-isopleths(lhs.a)
+  ###****
+  isopleths.birds<<-append(isopleths.birds,isolevels_data)
+  
+  areas$AREA[i] <- isolevels_data[[1]]@data$area[5]
+  
+  #I obtained the centroid from the isolevels list, so it would be for all the isolevels. 
+  cen<-gCentroid(isolevels_data[[1]],byid=T)
+
+  #I only need the centroid of the 95% iso level but it has to be as a matrix, so I sustract the value,
+  #transform it to a data frame and then to a matrix and then to coordinates
+  cen<-data.matrix(data.frame(x=cen@coords[5,1],y=cen@coords[5,2]))
+  
+  # Identify all cells that lie within buffer around site i:
+  Buffer.cells <- extract(forest, cen, cellnumbers=TRUE, 
+                        buffer=max_area_buffer)[[1]][,1]
+
+  # Copy land cover map and delete all values outside of buffer:
+  Buffer.forest <- forest
+  values(Buffer.forest)[-Buffer.cells] <- NA
+  
+  # just checking! Better: export as jpeg (or png), add points.
+  plot(Buffer.forest, ext=c(cen[1]-max_area_buffer,  
+                            cen[1]+max_area_buffer,
+                            cen[2]-max_area_buffer, 
+                            cen[2]+max_area_buffer))
+  
+  # Calculate class-level metrics for cells within buffer:
+  SamplingPoints.class.maxarea <- ClassStat(Buffer.forest,cellsize=10)
+
+  Class <- data.frame(Class.ID=c(1,2))
+  Result <- merge(Class, SamplingPoints.class.maxarea, 
+                  all=TRUE, by.x="Class.ID", by.y="class")
+  Result[is.na(Result)] <- 0
+
+  #Obtain statistics of buffer equal to the area of the largest home range
+  samplingPoints.class.homerange<-Result[,c(1,4,10)]
+
+  areas[i, c(6:9)] <- c(samplingPoints.class.homerange[1,2:3],
+                        samplingPoints.class.homerange[2,2:3])
+  cat(Frequencies[i], " ")
+}
+
+areas
+
+#
+save(isopleths.birds, file="isopleths.birds.RData")
+```
+
+
+# Data analysis of home range size vs patch size and proportion of forest
+
+```{r,warning=F,message=F,include=F}
+
+#Merge areas with elevation information of the patch
+areas<-merge(areas,prueba<-read.xlsx("Data bases/Information patches Costa Rica.xlsx",sheet=1,cols=c(1,5)))
+
+#Read data base
+#areas<-read.csv("areas database.csv")
+
+#Know statistics about the data base
+#Mean home range size
+hist(areas$AREA)
+round(mean(areas$AREA)/10000,2)
+round(sd(areas$AREA)/10000,2)
+round(median(areas$AREA)/10000,2)
+round(range(areas$AREA)/10000,2)
+
+hist(subset(areas,areas$AREA<80000)$AREA)
+mean(round(subset(areas,areas$AREA<80000)$AREA)/10000,2)
+median(round(subset(areas,areas$AREA<80000)$AREA)/10000,2)
+
+#Maximum value of a
+max(areas$a)
+
+areas[order(areas$prop.landscape2),c(1:3,8)]
+#Make plot of information
+#pairs(areas[c("AREA","a","n_points","prop.landscape2","mean.patch.area2","ELEVATION")],panel=panel.smooth,cex=2,cex.axis=2,cex.labels=2)
+
+panel.hist <- function(x, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(usr[1:2], 0, 1.5) )
+    h <- hist(x, plot = FALSE)
+    breaks <- h$breaks; nB <- length(breaks)
+    y <- h$counts; y <- y/max(y)
+    rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+}
+
+
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- abs(cor(x, y))
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+```
+
+```{r}
+pairs(areas[c("AREA","a","n_points","prop.landscape2","mean.patch.area2","ELEVATION")],upper.panel=panel.smooth,diag.panel=panel.hist,panel=panel.cor,main="Raw data")
+
+#Make plot with home range area log transformed
+areas$logAREA<-log(areas$AREA)
+areas$logprop.landscape2<-log(areas$prop.landscape2)
+areas$logmean.patch.area2<-log(areas$mean.patch.area2)
+
+pairs(areas[c("logAREA","a","n_points","logprop.landscape2","logmean.patch.area2","ELEVATION")],upper.panel=panel.smooth,diag.panel=panel.hist,panel=panel.cor,main="Log of area, proportion of forest and patch size")
+
+#pairs(areas[c("logAREA","a","n_points","prop.landscape2","mean.patch.area2","ELEVATION")],panel=panel.smooth,cex=2,cex.axis=2,cex.labels=2)
+
+#areas$logmean.patch.area2<-log(areas$mean.patch.area2)
+#pairs(areas[c("logAREA","a","n_points","prop.landscape2","logmean.patch.area2","ELEVATION")],panel=panel.smooth,cex=2,cex.axis=2,cex.labels=2)
+
+```
+
+```{r}
+#######GLMM#####
+library("lme4")
+library("nlme")
+#Converting random variables to factor
+areas$PATCH_ID<-as.factor(areas$PATCH_ID)
+#areas$FREQ<-as.factor(areas$FREQ)
+library("usdm")
+vif(data.frame(areas$AREA,areas$prop.landscape2,areas$mean.patch.area2,areas$ELEVATION))
+
+#Verify normality of data
+
+
+#We saw that patch size and proportion of forest in the buffer were correlated, so then we ran the models for those variables separately.
+
+
+#Model with random intercept. You have to use ML instead of REML to be able to compare AIC. I am using the logarithm in some variables so that they are normally distributed
+random_mod_1<-lme(log(AREA) ~ ELEVATION, random = ~1|PATCH_ID,method = "ML", data = areas)
+summary(random_mod_1)
+random_mod_2<-lme(log(AREA) ~ log(mean.patch.area2), random = ~1|PATCH_ID,method = "ML", data = areas)
+summary(random_mod_2)
+random_mod_3<-lme(log(AREA) ~ log(prop.landscape2), random = ~1|PATCH_ID,method = "ML", data = areas)
+summary(random_mod_3)
+random_mod_4<-lme(log(AREA) ~ scale(log(mean.patch.area2)) + scale(ELEVATION), random = ~1|PATCH_ID,method = "ML", data = areas)
+summary(random_mod_4)
+random_mod_5<-lme(log(AREA) ~ scale(log(prop.landscape2)) + scale(ELEVATION), random = ~1|PATCH_ID,method = "ML", data = areas)
+summary(random_mod_5)
+random_mod_6<-lme(log(AREA) ~ scale(log(prop.landscape2)) + scale(log(mean.patch.area2)) + scale(ELEVATION), random = ~1|PATCH_ID,method = "ML", data = areas)
+summary(random_mod_6)
+
+
+#Select best random factor model using AIC
+models.aic<-AIC(random_mod_1,random_mod_2,random_mod_3,random_mod_4,random_mod_5,random_mod_6)
+library("MuMIn")
+round(Weights(models.aic),digits=2) #Best model #5. 
+
+#Run the best model with REML
+random_mod_5<-lme(log(AREA) ~ scale(log(prop.landscape2)) + scale(ELEVATION), random = ~1|PATCH_ID,method = "REML", data = areas)
+#This is the best model, I will assess which variables I should retain
+summary(random_mod_5) #Proportion of forest was singificant
+plot(log(areas$prop.landscape2),log(areas$AREA))
+
+#The residuals look normaly distributed
+qqnorm(random_mod_5$residuals)
+abline(0,1)
+
+#Checking homogeneity of variance. SEEMS VERY GOOD
+plot(random_mod_5)
+
+```
+
+```{r}
+#Plot predicted values
+jpeg("Graphs/Home range size vs prop forest.jpg",quality=100,width=1000,height=700)
+par(mar=c(5,6,2,2),mfrow = c(1, 1))
+plot(log(areas$prop.landscape2),log(areas$AREA), xlab="Log proportion of forest",ylab="Home range size (log ha)",cex.axis=3,cex.lab=3,pch=16,cex=3)
+par(new=T)
+#Plot regression line
+abline(random_mod_5$coefficients$fixed[1:2],col="red",lwd=3)
+
+dev.off()
+```
+
+```{r}
+
+#Check the model without outliers
+areas.without.outliers<-subset(areas,areas$AREA<100000)
+
+random_mod_6<-lme(log(AREA) ~ scale(log(prop.landscape2)) + scale(ELEVATION), random = ~1|PATCH_ID,method = "REML", data = areas.without.outliers)
+#This is the best model, I will assess which variables I should retain
+summary(random_mod_6) 
+
+plot(log(areas.without.outliers$prop.landscape2),log(areas.without.outliers$AREA))
+
+#The residuals look normaly distributed
+qqnorm(random_mod_6$residuals)
+abline(0,1)
+
+#Checking homogeneity of variance. SEEMS VERY GOOD
+plot(random_mod_6)
