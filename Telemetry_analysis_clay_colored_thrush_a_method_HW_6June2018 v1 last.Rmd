@@ -37,13 +37,7 @@ http://tlocoh.r-forge.r-project.org/tips/isopleth_overlap_auto.html
 #Remove anything on workspace
 rm(list=ls(all=TRUE))
 
-#Set working directory
-#setwd("Z:/Data bases")
-#setwd("/media/ResNAS/Data bases")
-
 #Source functions
-#source("Z:/R code/Telemetry_analysis_clay_colored_thrush_functions.R")
-#source("Telemetry_analysis_clay_colored_thrush_functions_a_method.R")
 source("Telemetry_analysis_clay_colored_thrush_functions_a_method_HW.R")
 source("Clean telemetry data base.R")
 
@@ -130,7 +124,8 @@ boxplot(times)
 hist(times,breaks=15,freq=F)
 summary(times)
   
-
+#Remove data bases that I will not use
+rm(sampling,points,hours,times)
 ```
 
 # HW: prepare tables with results
@@ -146,10 +141,11 @@ forest<-raster("Map layers/Aug27_15rasters/forest27")
 #max_area_buffer<-sqrt(109566.7814/pi)   # HW: largest area
 #max_area_buffer<-571.6229                # HW: half of largest a.value
 
-Frequencies <- unique(prueba$FREQ)
-# HW: Prepare empty data frame:
+#Obtain the list of frequencies I have
+Frequencies<-unique(prueba$FREQ)
 
-areas <- data.frame(matrix(NA, 
+# HW: Prepare empty data frame:
+areas<-data.frame(matrix(NA, 
                 nrow=length(Frequencies), ncol=9, 
                 dimnames=list(Frequencies, c("PATCH_ID", "FREQ",
                          "AREA", "a", "n_points",
@@ -175,8 +171,8 @@ colnames(utm_formated)<-c("x","y")
 
 LHS_data <- LXY_data <- list()
 #[-c(10, 13, 16, 19)])
-for(i in c(1:length(Frequencies))[-c(14,17,18)])
-{
+#for(i in c(1:length(Frequencies))[-c(14,17,18)]) #I do not know why I am takin out frequencies 672, 760 and 791
+for(i in c(1:length(Frequencies))){ #I do not know why I am takin out frequencies 672, 760 and 791
   lxy_data<-xyt.lxy(xy=utm_formated[prueba$FREQ==Frequencies[i],], 
                   dt=prueba$TIME[prueba$FREQ==Frequencies[i]],
                   id=prueba$FREQ[prueba$FREQ==Frequencies[i]], 
@@ -201,8 +197,7 @@ for(i in c(1:length(Frequencies))[-c(14,17,18)])
   
   #Plot each convex hull and save it in a jpg file
 
-  jpeg(paste("Graphs/",Frequencies[i],"gogole_plot.jpg",sep=""),
-    #   width=1000, height=1000, quality=100)
+  jpeg(paste("Graphs/",Frequencies[i],"gogole_plot.jpg",sep=""),width=1000, height=1000, quality=100)
   par(cex=3)
   plot(lhs_data, iso=T, a=a.value, allpts=T, cex.allpts=1, 
        col.allpts="gray30",ufipt=F)
