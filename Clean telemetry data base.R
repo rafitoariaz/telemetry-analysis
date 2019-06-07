@@ -2,10 +2,9 @@ clean.tel.data<-function (){
   
   
   #Load file. 
-  #prueba<<-read.xlsx("Data bases/Datos telemetria Julio Agosto 2016 2 modified  V2.xlsx",sheet=1)
   prueba<<-read.xlsx("Data bases/Datos telemetria Julio Agosto 2016 2.xlsx",sheet=1)
-  #prueba<-read.xlsx("/home/luis/Desktop/Datos telemetria Julio Agosto 2016 2.xlsx",sheet=1)
   
+  #See which frequencies I have
   table(prueba$FREQ)
   #Subset if there are NA and convert into numeric string the locations and orientation
   #NA from location.x appear because they registered the time at which they started to track the bird
