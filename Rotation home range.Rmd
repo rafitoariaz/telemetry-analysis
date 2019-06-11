@@ -1,0 +1,615 @@
+---
+title: "Telemetry analysis clay colored thrush"
+author: "Luis Antonio Arias Medellin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Load required packages
+
+```{r, include=FALSE}
+#Load libraries
+library("openxlsx")
+library("NISTunits")
+library("rgdal")
+library("ggmap")
+library("SDMTools")
+library("raster")
+library("MetaLandSim") # need to run code source("https://bioconductor.org/biocLite.R") biocLite("Biobase")
+library("rgeos")
+library("maps")
+library("maptools")
+library("geosphere")
+library("tlocoh") #Install using #http://tlocoh.r-forge.r-project.org/manual_install.html instructions and 
+#https://r-forge.r-project.org/R/?group_id=1622 ZIP FILE
+#Ubuntu
+#http://stackoverflow.com/questions/15248815/rgdal-package-installation for rgdal
+#You have also to install packages rgeos and pbapply
+#http://tlocoh.r-forge.r-project.org/manual_install.html step 5 at bottom of web page for tlocoh
+```
+
+
+# HW: prepare tables with results
+
+```{r}
+
+#Remove anything on workspace
+#rm(list=ls(all=TRUE))
+#Load raster
+forest<-raster("Map layers/Aug27_15rasters/forest27")
+
+#Read excel data base of patch id, patch size and % forest
+freq_patches<-read.xlsx("Data bases/Frequencies patches.xlsx",sheet=1)
+
+#Make an empty data base which will contain the information with NA's
+metrics.or.rot <- data.frame("PATCH_ID"=freq_patches$PATCH,"FREQ"=freq_patches$FREQ, "PROP.FOR.OR"=NA, "PROP.FOR.ROT"=NA, "PATCH.SIZE.OR"=NA, "PATCH.SIZE.ROT"=NA, "CONNECTIVITY.OR"=NA, "CONNECTIVITY.ROT"=NA, "CLASS.COINC.PROB.ORG"=NA, "CLASS.COINC.PROB.ROT"=NA)
+colnames(metrics.or.rot)<-c("PATCH_ID","FREQ","PROP.FOR.OR", "PROP.FOR.ROT", "PATCH.SIZE.OR", "PATCH.SIZE.ROT", "CONNECTIVITY.OR", "CONNECTIVITY.ROT", "CLASS.COINC.PROB.ORG", "CLASS.COINC.PROB.ROT")
+
+
+```
+
+
+#Step 2
+```{r}
+#Read csv with isopleths
+#isopleths.birds<-load("Z:/R code/Telemetry analysis/isopleths.birds.RData")
+#isopleths.birds<-load("isopleths.birds.RData")
+source("Rotation home range functions.R")
+
+frequencies<-as.numeric(substr(names(isopleths.birds),1,3))
+#******For now I am taking out some rows because it is not calculating any metric for the original home range since there is no forest on it
+
+#for (i in c(1:11,13,15:17,19:21,23:nrow(metrics.or.rot))){
+for (i in c(1:11,13,15:17,19:21,23)){
+# Clip forest grid to polygon
+# ---------------------------  
+forest.clip <- clip(forest, shape=isopleths.birds[[i]][5,])
+#forest.clip
+#plot(forest.clip)
+#lines(isopleths.birds[[i]][5,])
+
+
+
+# Rotate and clip (specify angle in degrees)
+# ---------------
+#Rotate polygon
+HR.rotated <- elide(isopleths.birds[[i]][5,], rotate=0, 
+                    center=isopleths.birds[[i]]@polygons[[5]]@labpt)
+forest.rotated <- clip(forest, shape=HR.rotated)
+  
+#jpeg(paste("Graphs/",frequencies[i],"home_range_raster.jpg",sep=""),
+#       width=1000, height=1000, quality=100)
+#  plot(forest.rotated)  
+#  lines(isopleths.birds[[1]][5,])
+#  lines(HR.rotated, col="red")
+#  dev.off()
+
+
+#Statitiscs of rotated polygon
+Res.rotated <- ClassStat(forest.rotated, cellsize=10)     # Within rotated homerange
+
+#Create data frame
+rotated_analysis<-data.frame(matrix(nrow = 359, ncol = 5))
+colnames(rotated_analysis)<-c("class","prop_forest","mean_patch_size","connectivity","class_coincidence_prob")
+
+
+for(angle in 1:359)
+{
+  #Rotate polygon
+  HR.rotated <- elide(isopleths.birds[[i]][5,], rotate=angle, 
+                      center=isopleths.birds[[i]]@polygons[[5]]@labpt)
+  forest.rotated <- clip(forest, shape=HR.rotated)
+  
+  #plot(forest.rotated)  
+  #lines(isopleths.birds[[1]][5,])
+  #lines(HR.rotated, col="red")
+  
+  #Statitiscs of rotated polygon
+  Res.rotated <- ClassStat(forest.rotated, cellsize=10)     # Within rotated homerange
+  
+  #Bidn with previous data base
+  rotated_analysis$prop_forest[angle]<-Res.rotated$prop.landscape[2]
+  rotated_analysis$mean_patch_size[angle]<-Res.rotated$mean.patch.area[2]
+  rotated_analysis$connectivity[angle]<-Res.rotated$patch.cohesion.index[2]
+  rotated_analysis$class_coincidence_prob[angle]<-Res.rotated$effective.mesh.size[2]/Res.rotated$total.area[2]
+  
+    print(paste(angle,"of 359 of bird #",i))
+    
+}
+
+#Landscape metrics for original home range
+Res.original<-ClassStat(forest.clip, cellsize=10)       # Within homerange
+Res.original<-subset(Res.original,Res.original$class==2)
+
+#Analysis considering landscape with NA's in proportion of forest
+metrics.or.rot$PROP.FOR.OR[i]<-Res.original$prop.landscape
+metrics.or.rot$PROP.FOR.ROT[i]<-mean(rotated_analysis$prop_forest,na.rm=T)
+metrics.or.rot$PATCH.SIZE.OR[i]<-Res.original$mean.patch.area
+metrics.or.rot$PATCH.SIZE.ROT[i]<-mean(rotated_analysis$mean_patch_size,na.rm=T)
+metrics.or.rot$CONNECTIVITY.OR[i]<-Res.original$patch.cohesion.index
+metrics.or.rot$CONNECTIVITY.ROT[i]<-mean(rotated_analysis$connectivity,na.rm=T)
+metrics.or.rot$CLASS.COINC.PROB.ORG[i]<-Res.original$effective.mesh.size/Res.original$total.area
+metrics.or.rot$CLASS.COINC.PROB.ROT[i]<-mean(rotated_analysis$class_coincidence_prob,na.rm=T)
+
+
+print(paste(i,"of",nrow(metrics.or.rot)))
+
+}
+```
+```{r}
+#**Problems
+#12,14,18,22 Original and rotated alternatives do not have forest, so it cannot calculate metrics. I CAN THEN PUT 0's
+#15,24 only the original home range does not have value. I CAN PUT THEM A VALUE OF 0
+####19 rotations have NA values because the home range is completely full with forest, so when I try to select the columns for class 2 (forest), there is only 1 column which corresponds to the forest statistics. I WILL ONLY CHANGE THE PART OF THE CODE WERE IT SELECTS FROM THE ROTATED DATA BASE THE COLUMN 1####
+
+i<-19
+
+forest.clip <- clip(forest, shape=isopleths.birds[[i]][5,])
+#forest.clip
+#plot(forest.clip)
+#lines(isopleths.birds[[i]][5,])
+
+
+
+# Rotate and clip (specify angle in degrees)
+# ---------------
+#Rotate polygon
+HR.rotated <- elide(isopleths.birds[[i]][5,], rotate=0, 
+                    center=isopleths.birds[[i]]@polygons[[5]]@labpt)
+forest.rotated <- clip(forest, shape=HR.rotated)
+  
+#jpeg(paste("Graphs/",frequencies[i],"home_range_raster.jpg",sep=""),
+#       width=1000, height=1000, quality=100)
+#  plot(forest.rotated)  
+#  lines(isopleths.birds[[1]][5,])
+#  lines(HR.rotated, col="red")
+#  dev.off()
+
+
+#Statitiscs of rotated polygon
+Res.rotated <- ClassStat(forest.rotated, cellsize=10)     # Within rotated homerange
+
+#Create data frame
+rotated_analysis<-data.frame(matrix(nrow = 359, ncol = 5))
+colnames(rotated_analysis)<-c("class","prop_forest","mean_patch_size","connectivity","class_coincidence_prob")
+
+
+for(angle in 1:359)
+{
+  #Rotate polygon
+  HR.rotated <- elide(isopleths.birds[[i]][5,], rotate=angle, 
+                      center=isopleths.birds[[i]]@polygons[[5]]@labpt)
+  forest.rotated <- clip(forest, shape=HR.rotated)
+  
+  #plot(forest.rotated)  
+  #lines(isopleths.birds[[1]][5,])
+  #lines(HR.rotated, col="red")
+  
+  #Statitiscs of rotated polygon
+  Res.rotated <- ClassStat(forest.rotated, cellsize=10)     # Within rotated homerange
+  
+  #Bidn with previous data base
+  rotated_analysis$prop_forest[angle]<-Res.rotated$prop.landscape[1]
+  rotated_analysis$mean_patch_size[angle]<-Res.rotated$mean.patch.area[1]
+  rotated_analysis$connectivity[angle]<-Res.rotated$patch.cohesion.index[1]
+  rotated_analysis$class_coincidence_prob[angle]<-Res.rotated$effective.mesh.size[1]/Res.rotated$total.area[1]
+  
+    print(paste(angle,"of 359 of bird #",i))
+    
+}
+
+#Landscape metrics for original home range
+Res.original<-ClassStat(forest.clip, cellsize=10)       # Within homerange
+Res.original<-subset(Res.original,Res.original$class==2)
+
+#Analysis considering landscape with NA's in proportion of forest
+metrics.or.rot$PROP.FOR.OR[i]<-Res.original$prop.landscape
+metrics.or.rot$PROP.FOR.ROT[i]<-mean(rotated_analysis$prop_forest,na.rm=T)
+metrics.or.rot$PATCH.SIZE.OR[i]<-Res.original$mean.patch.area
+metrics.or.rot$PATCH.SIZE.ROT[i]<-mean(rotated_analysis$mean_patch_size,na.rm=T)
+metrics.or.rot$CONNECTIVITY.OR[i]<-Res.original$patch.cohesion.index
+metrics.or.rot$CONNECTIVITY.ROT[i]<-mean(rotated_analysis$connectivity,na.rm=T)
+metrics.or.rot$CLASS.COINC.PROB.ORG[i]<-Res.original$effective.mesh.size/Res.original$total.area
+metrics.or.rot$CLASS.COINC.PROB.ROT[i]<-mean(rotated_analysis$class_coincidence_prob,na.rm=T)
+
+
+
+```
+
+```{r}
+#Data base considering landscape when replacing NA's in proportion of forest with 0's
+metrics.or.rot.with.0s<-metrics.or.rot
+metrics.or.rot.with.0s[is.na(metrics.or.rot.with.0s)] <- 0
+
+
+```
+
+
+```{r}
+#metrics.or.rot<-read.csv("data base rotated analysis with NA.csv")
+#metrics.or.rot.with.0s<-read.csv("data base rotated analysis with 0s.csv")
+
+metrics.or.rot
+
+####TEST FOR PROPORTION OF FOREST####
+#First I will convert the data base from wide to long so that I can do a boxplot
+library("reshape2")
+metrics.or.rot.graph<-melt(metrics.or.rot[,3:ncol(metrics.or.rot)])
+colnames(metrics.or.rot.graph)[1]<-"metric"
+
+#Boxplot of variables
+par(mar=c(12,4,2,2))
+boxplot(subset(metrics.or.rot.graph,metrics.or.rot.graph$value<=1)$value~subset(metrics.or.rot.graph,metrics.or.rot.graph$value<=1)$metric,las=2)
+
+
+#Perform the test
+t.test(metrics.or.rot$PROP.FOR.OR,metrics.or.rot$PROP.FOR.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot$PROP.FOR.OR-metrics.or.rot$PROP.FOR.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. 
+leveneTest(subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="PROP.FOR.OR" | metrics.or.rot.graph$metric=="PROP.FOR.ROT")$value~subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="PROP.FOR.OR" | metrics.or.rot.graph$metric=="PROP.FOR.ROT")$metric,las=2)
+
+```
+
+
+```{r}
+####TEST FOR PROPORTION OF FOREST WITH O'S####
+#First I will convert the data base from wide to long so that I can do a boxplot
+library("reshape2")
+metrics.or.rot.with.0s.graph<-melt(metrics.or.rot.with.0s[,3:ncol(metrics.or.rot.with.0s)])
+colnames(metrics.or.rot.with.0s.graph)[1]<-"metric"
+
+#Boxplot of variables
+par(mar=c(12,4,2,2))
+boxplot(subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$value<=1)$value~subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$value<=1)$metric,las=2)
+
+#Perform the test
+t.test(metrics.or.rot.with.0s$PROP.FOR.OR,metrics.or.rot.with.0s$PROP.FOR.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot.with.0s$PROP.FOR.OR-metrics.or.rot.with.0s$PROP.FOR.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. 
+leveneTest(subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="PROP.FOR.OR" | metrics.or.rot.with.0s.graph$metric=="PROP.FOR.ROT")$value~subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="PROP.FOR.OR" | metrics.or.rot.with.0s.graph$metric=="PROP.FOR.ROT")$metric,las=2)
+
+#Save difference in proportion of forest to make boxplot at the end
+diff.prop.for<-diff
+
+
+```
+
+
+
+```{r}
+
+
+#metrics.or.rot<-read.csv("data base rotated analysis with NA.csv")
+#metrics.or.rot.with.0s<-read.csv("data base rotated analysis with 0s.csv")
+
+####TEST FOR PATCH SIZE####
+#First I will convert the data base from wide to long so that I can do a boxplot
+library("reshape2")
+metrics.or.rot.graph<-melt(metrics.or.rot[,3:ncol(metrics.or.rot)])
+colnames(metrics.or.rot.graph)[1]<-"metric"
+
+#Boxplot of variables
+par(mar=c(12,4,2,2))
+boxplot(subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="PATCH.SIZE.OR" | metrics.or.rot.graph$metric=="PATCH.SIZE.ROT")$value~subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="PATCH.SIZE.OR" | metrics.or.rot.graph$metric=="PATCH.SIZE.ROT")$metric,las=2)
+
+#Perform the test
+t.test(metrics.or.rot$PATCH.SIZE.OR,metrics.or.rot$PATCH.SIZE.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot$PATCH.SIZE.OR-metrics.or.rot$PATCH.SIZE.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. 
+leveneTest(subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="PATCH.SIZE.OR" | metrics.or.rot.graph$metric=="PATCH.SIZE.ROT")$value~subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="PATCH.SIZE.OR" | metrics.or.rot.graph$metric=="PATCH.SIZE.ROT")$metric,las=2)
+```
+
+```{r}
+
+####TEST FOR PATCH SIZE WITH 0'S####
+#First I will convert the data base from wide to long so that I can do a boxplot
+library("reshape2")
+metrics.or.rot.with.0s.graph<-melt(metrics.or.rot.with.0s[,3:ncol(metrics.or.rot.with.0s)])
+colnames(metrics.or.rot.with.0s.graph)[1]<-"metric"
+
+#Boxplot of variables
+par(mar=c(12,4,2,2))
+boxplot(subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="PATCH.SIZE.OR" | metrics.or.rot.with.0s.graph$metric=="PATCH.SIZE.ROT")$value~subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="PATCH.SIZE.OR" | metrics.or.rot.with.0s.graph$metric=="PATCH.SIZE.ROT")$metric,las=2)
+
+#Perform the test
+t.test(metrics.or.rot.with.0s$PATCH.SIZE.OR,metrics.or.rot.with.0s$PATCH.SIZE.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot.with.0s$PATCH.SIZE.OR-metrics.or.rot.with.0s$PATCH.SIZE.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. 
+leveneTest(subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="PATCH.SIZE.OR" | metrics.or.rot.with.0s.graph$metric=="PATCH.SIZE.ROT")$value~subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="PATCH.SIZE.OR" | metrics.or.rot.with.0s.graph$metric=="PATCH.SIZE.ROT")$metric,las=2)
+
+#The data is not normaly distributed, so I will log transform it
+metrics.or.rot.with.0s$logPATCH.SIZE.OR<-log(metrics.or.rot.with.0s$PATCH.SIZE.OR+1)
+metrics.or.rot.with.0s$logPATCH.SIZE.ROT<-log(metrics.or.rot.with.0s$PATCH.SIZE.ROT+1)
+
+#First I will convert the data base from wide to long so that I can do a boxplot
+library("reshape2")
+metrics.or.rot.with.0s.graph<-melt(metrics.or.rot.with.0s[,3:ncol(metrics.or.rot.with.0s)])
+colnames(metrics.or.rot.with.0s.graph)[1]<-"metric"
+
+#Boxplot of variables
+par(mar=c(12,4,2,2))
+boxplot(subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="logPATCH.SIZE.OR" | metrics.or.rot.with.0s.graph$metric=="logPATCH.SIZE.ROT")$value~subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="logPATCH.SIZE.OR" | metrics.or.rot.with.0s.graph$metric=="logPATCH.SIZE.ROT")$metric,las=2)
+
+#Perform the test
+t.test(metrics.or.rot.with.0s$logPATCH.SIZE.OR,metrics.or.rot.with.0s$logPATCH.SIZE.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot.with.0s$logPATCH.SIZE.OR-metrics.or.rot.with.0s$logPATCH.SIZE.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. 
+leveneTest(subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="logPATCH.SIZE.OR" | metrics.or.rot.with.0s.graph$metric=="logPATCH.SIZE.ROT")$value~subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="logPATCH.SIZE.OR" | metrics.or.rot.with.0s.graph$metric=="logPATCH.SIZE.ROT")$metric,las=2)
+
+#Save difference in patch size to make boxplot
+diff.patch.size<-diff
+
+```
+
+```{r}
+#metrics.or.rot<-read.csv("data base rotated analysis with NA.csv")
+#metrics.or.rot.with.0s.with.0s<-read.csv("data base rotated analysis with 0s.csv")
+
+####TEST FOR CONNECTIVITY####
+#First I will convert the data base from wide to long so that I can do a boxplot
+library("reshape2")
+metrics.or.rot.graph<-melt(metrics.or.rot[,3:ncol(metrics.or.rot)])
+colnames(metrics.or.rot.graph)[1]<-"metric"
+
+#Boxplot of variables
+par(mar=c(12,4,2,2))
+boxplot(subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="CONNECTIVITY.OR" | metrics.or.rot.graph$metric=="CONNECTIVITY.ROT")$value~subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="CONNECTIVITY.OR" | metrics.or.rot.graph$metric=="CONNECTIVITY.ROT")$metric,las=2)
+
+#Perform the test
+t.test(metrics.or.rot$CONNECTIVITY.OR,metrics.or.rot$CONNECTIVITY.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot$CONNECTIVITY.OR-metrics.or.rot$CONNECTIVITY.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. 
+leveneTest(subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="CONNECTIVITY.OR" | metrics.or.rot.graph$metric=="CONNECTIVITY.ROT")$value~subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="CONNECTIVITY.OR" | metrics.or.rot.graph$metric=="CONNECTIVITY.ROT")$metric,las=2)
+
+#The data is not normaly distributed, so I will log transform it
+metrics.or.rot$logCONNECTIVITY.OR<-log(metrics.or.rot$CONNECTIVITY.OR)
+metrics.or.rot$logCONNECTIVITY.ROT<-log(metrics.or.rot$CONNECTIVITY.ROT)
+
+
+#First I will convert the data base from wide to long so that I can do a boxplot
+library("reshape2")
+metrics.or.rot.graph<-melt(metrics.or.rot[,3:ncol(metrics.or.rot)])
+colnames(metrics.or.rot.graph)[1]<-"metric"
+
+#Boxplot of variables
+par(mar=c(12,4,2,2))
+boxplot(subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="logCONNECTIVITY.OR" | metrics.or.rot.graph$metric=="logCONNECTIVITY.ROT")$value~subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="logCONNECTIVITY.OR" | metrics.or.rot.graph$metric=="logCONNECTIVITY.ROT")$metric,las=2)
+
+#Perform the test
+t.test(metrics.or.rot$logCONNECTIVITY.OR,metrics.or.rot$logCONNECTIVITY.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot$logCONNECTIVITY.OR-metrics.or.rot$logCONNECTIVITY.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. 
+leveneTest(subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="logCONNECTIVITY.OR" | metrics.or.rot.graph$metric=="logCONNECTIVITY.ROT")$value~subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="logCONNECTIVITY.OR" | metrics.or.rot.graph$metric=="logCONNECTIVITY.ROT")$metric,las=2)
+
+
+#I cannot normalize the data, so I am running a not parametric test
+wilcox.test(metrics.or.rot$CONNECTIVITY.OR,metrics.or.rot$CONNECTIVITY.ROT,paired=T)
+
+```
+
+```{r}
+####TEST FOR CONNECTIVITY WITH 0'S####
+#First I will convert the data base from wide to long so that I can do a boxplot
+library("reshape2")
+metrics.or.rot.with.0s.with.0s.graph<-melt(metrics.or.rot.with.0s.with.0s[,3:ncol(metrics.or.rot.with.0s.with.0s)])
+colnames(metrics.or.rot.with.0s.with.0s.graph)[1]<-"metric"
+
+#Boxplot of variables
+par(mar=c(12,4,2,2))
+boxplot(subset(metrics.or.rot.with.0s.with.0s.graph,metrics.or.rot.with.0s.with.0s.graph$metric=="CONNECTIVITY.OR" | metrics.or.rot.with.0s.with.0s.graph$metric=="CONNECTIVITY.ROT")$value~subset(metrics.or.rot.with.0s.with.0s.graph,metrics.or.rot.with.0s.with.0s.graph$metric=="CONNECTIVITY.OR" | metrics.or.rot.with.0s.with.0s.graph$metric=="CONNECTIVITY.ROT")$metric,las=2)
+
+#Perform the test
+t.test(metrics.or.rot.with.0s.with.0s$CONNECTIVITY.OR,metrics.or.rot.with.0s.with.0s$CONNECTIVITY.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot.with.0s.with.0s$CONNECTIVITY.OR-metrics.or.rot.with.0s.with.0s$CONNECTIVITY.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. 
+leveneTest(subset(metrics.or.rot.with.0s.with.0s.graph,metrics.or.rot.with.0s.with.0s.graph$metric=="CONNECTIVITY.OR" | metrics.or.rot.with.0s.with.0s.graph$metric=="CONNECTIVITY.ROT")$value~subset(metrics.or.rot.with.0s.with.0s.graph,metrics.or.rot.with.0s.with.0s.graph$metric=="CONNECTIVITY.OR" | metrics.or.rot.with.0s.with.0s.graph$metric=="CONNECTIVITY.ROT")$metric,las=2)
+
+#The data is not normaly distributed, so I will log transform it
+metrics.or.rot.with.0s.with.0s$logCONNECTIVITY.OR<-log(metrics.or.rot.with.0s.with.0s$CONNECTIVITY.OR+1)
+metrics.or.rot.with.0s.with.0s$logCONNECTIVITY.ROT<-log(metrics.or.rot.with.0s.with.0s$CONNECTIVITY.ROT+1)
+
+
+#First I will convert the data base from wide to long so that I can do a boxplot
+library("reshape2")
+metrics.or.rot.with.0s.with.0s.graph<-melt(metrics.or.rot.with.0s.with.0s[,3:ncol(metrics.or.rot.with.0s.with.0s)])
+colnames(metrics.or.rot.with.0s.with.0s.graph)[1]<-"metric"
+
+#Boxplot of variables
+par(mar=c(12,4,2,2))
+boxplot(subset(metrics.or.rot.with.0s.with.0s.graph,metrics.or.rot.with.0s.with.0s.graph$metric=="logCONNECTIVITY.OR" | metrics.or.rot.with.0s.with.0s.graph$metric=="logCONNECTIVITY.ROT")$value~subset(metrics.or.rot.with.0s.with.0s.graph,metrics.or.rot.with.0s.with.0s.graph$metric=="logCONNECTIVITY.OR" | metrics.or.rot.with.0s.with.0s.graph$metric=="logCONNECTIVITY.ROT")$metric,las=2)
+
+#Perform the test
+t.test(metrics.or.rot.with.0s.with.0s$logCONNECTIVITY.OR,metrics.or.rot.with.0s.with.0s$logCONNECTIVITY.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot.with.0s.with.0s$logCONNECTIVITY.OR-metrics.or.rot.with.0s.with.0s$logCONNECTIVITY.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. 
+leveneTest(subset(metrics.or.rot.with.0s.with.0s.graph,metrics.or.rot.with.0s.with.0s.graph$metric=="logCONNECTIVITY.OR" | metrics.or.rot.with.0s.with.0s.graph$metric=="logCONNECTIVITY.ROT")$value~subset(metrics.or.rot.with.0s.with.0s.graph,metrics.or.rot.with.0s.with.0s.graph$metric=="logCONNECTIVITY.OR" | metrics.or.rot.with.0s.with.0s.graph$metric=="logCONNECTIVITY.ROT")$metric,las=2)
+
+
+#I cannot normalize the data, so I am running a not parametric test
+wilcox.test(metrics.or.rot.with.0s.with.0s$CONNECTIVITY.OR,metrics.or.rot.with.0s.with.0s$CONNECTIVITY.ROT,paired=T)
+
+#Save the difference in connectivity for doing boxplot
+diff.conn<-diff
+
+```
+
+```{r}
+#metrics.or.rot<-read.csv("data base rotated analysis with NA.csv")
+#metrics.or.rot.with.0s.with.0s<-read.csv("data base rotated analysis with 0s.csv")
+
+
+####TEST FOR CLASS COINCIDENCE PROBABILITY####
+#First I will convert the data base from wide to long so that I can do a boxplot
+library("reshape2")
+metrics.or.rot.graph<-melt(metrics.or.rot[,3:ncol(metrics.or.rot)])
+colnames(metrics.or.rot.graph)[1]<-"metric"
+
+#Boxplot of variables
+par(mar=c(12,4,2,2))
+boxplot(subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="CLASS.COINC.PROB.ORG" | metrics.or.rot.graph$metric=="CLASS.COINC.PROB.ROT")$value~subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="CLASS.COINC.PROB.ORG" | metrics.or.rot.graph$metric=="CLASS.COINC.PROB.ROT")$metric,las=2)
+
+#Perform the test
+t.test(metrics.or.rot$CLASS.COINC.PROB.ORG,metrics.or.rot$CLASS.COINC.PROB.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot$CLASS.COINC.PROB.ORG-metrics.or.rot$CLASS.COINC.PROB.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. 
+leveneTest(subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="CLASS.COINC.PROB.ORG" | metrics.or.rot.graph$metric=="CLASS.COINC.PROB.ROT")$value~subset(metrics.or.rot.graph,metrics.or.rot.graph$metric=="CLASS.COINC.PROB.ORG" | metrics.or.rot.graph$metric=="CLASS.COINC.PROB.ROT")$metric,las=2)
+
+```
+
+
+```{r}
+####TEST FOR CLASS COINCIDENCE PROBABILITY WITH 0'S####
+#First I will convert the data base from wide to long so that I can do a boxplot
+library("reshape2")
+metrics.or.rot.with.0s.graph<-melt(metrics.or.rot.with.0s[,3:ncol(metrics.or.rot.with.0s)])
+colnames(metrics.or.rot.with.0s.graph)[1]<-"metric"
+
+#Boxplot of variables
+par(mar=c(12,4,2,2))
+boxplot(subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="CLASS.COINC.PROB.ORG" | metrics.or.rot.with.0s.graph$metric=="CLASS.COINC.PROB.ROT")$value~subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="CLASS.COINC.PROB.ORG" | metrics.or.rot.with.0s.graph$metric=="CLASS.COINC.PROB.ROT")$metric,las=2)
+
+#Perform the test
+t.test(metrics.or.rot.with.0s$CLASS.COINC.PROB.ORG,metrics.or.rot.with.0s$CLASS.COINC.PROB.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot.with.0s$CLASS.COINC.PROB.ORG-metrics.or.rot.with.0s$CLASS.COINC.PROB.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. 
+leveneTest(subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="CLASS.COINC.PROB.ORG" | metrics.or.rot.with.0s.graph$metric=="CLASS.COINC.PROB.ROT")$value~subset(metrics.or.rot.with.0s.graph,metrics.or.rot.with.0s.graph$metric=="CLASS.COINC.PROB.ORG" | metrics.or.rot.with.0s.graph$metric=="CLASS.COINC.PROB.ROT")$metric,las=2)
+
+
+#Save difference in class coincidendce probability to make boxplot
+diff.class.coinc.prob<-diff
+
+
+
+```
+
+```{r}
+
+
+#Plot boxplots with mean difference of original-rotated
+jpeg("Graphs/Home range thrush original rotated prop forest patch size connectivity.jpg",quality=100,width=800,height=500)
+par(mfrow=c(1,3),mar=c(4,7,4,4))
+boxplot(diff.prop.for,main="Prop. of forest",ylab="", cex.lab=2.5, cex.axis=2.5, cex.main=2.5, outcex=1.5)
+abline(h=0,lwd=3,lty=2,col="red")
+mtext(text="Difference (Original-rotated home ranges)",side=2,line=4,cex=1.5)
+
+
+boxplot(diff.patch.size,ylab="",main=expression(bold(paste("Log mean patch size (m"^"2",")"))), cex.lab=2.5, cex.axis=2.5, cex.main=2.5, outcex=1.5)
+abline(h=0,lwd=3,lty=2,col="red")
+mtext(text="Difference (Original-rotated home ranges)",side=2,line=4,cex=1.5)
+
+boxplot(diff.class.coinc.prob,ylab="", main="Connectivity", cex.lab=2.5, cex.axis=2.5, cex.main=2.5, outcex=1.5)
+abline(h=0,lwd=3,lty=2,col="red")
+mtext(text="Difference (Original-rotated home ranges)",side=2,line=4,cex=1.5)
+
+#boxplot(diff.conn,
+        #ylab="Difference (Original-rotated home ranges)",
+        #main="Connectivity",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,outcex=1.5)
+dev.off()
+plot(metrics.or.rot$PROP.FOR.ROT,metrics.or.rot$PROP.FOR.OR)
+abline(a=0,b=1)
+
+plot(metrics.or.rot$PATCH.SIZE.ROT,metrics.or.rot$PATCH.SIZE.OR)
+abline(a=0,b=1)
+
+plot(metrics.or.rot$logCONNECTIVITY.ROT,metrics.or.rot$logCONNECTIVITY.OR)
+abline(a=0,b=1)
+```
