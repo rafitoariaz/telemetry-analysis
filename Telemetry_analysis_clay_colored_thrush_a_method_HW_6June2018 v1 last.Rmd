@@ -162,7 +162,7 @@ For each frequency, check data and drop observations that are invalid, e.g. dupl
 clean.freq()
 ```
 
-# HW: Step 2 - Get number of points, maximum distance a, and area of 95% homerange
+# HW: Step 2 - Get number of points, maximum distance a, and area of 95% homerange using a method
 
 ```{r, include=FALSE}
 #Convert vector of coordinates to coordinates format
@@ -281,7 +281,7 @@ for(i in c(1:length(Frequencies)))
   cen<-data.matrix(data.frame(x=cen@coords[5,1],y=cen@coords[5,2]))
   
   # Identify all cells that lie within buffer around site i:
-  Buffer.cells <- extract(forest, cen, cellnumbers=TRUE, 
+  Buffer.cells <- raster::extract(forest, cen, cellnumbers=TRUE, 
                         buffer=max_area_buffer)[[1]][,1]
 
   # Copy land cover map and delete all values outside of buffer:
@@ -445,7 +445,7 @@ par(mar=c(5,6,2,2),mfrow = c(1, 1))
 plot(log(areas$prop.landscape2),log(areas$AREA), xlab="Log proportion of forest",ylab="Home range size (log ha)",cex.axis=3,cex.lab=3,pch=16,cex=3)
 par(new=T)
 #Plot regression line
-abline(random_mod_5$coefficients$fixed[1:2],col="red",lwd=3)
+abline(random_mod_2$coefficients$fixed[1:2],col="red",lwd=3)
 
 dev.off()
 ```
@@ -471,7 +471,7 @@ fitted.mod<-fitted(random_mod_6)
 
 #Plot
 plot(fitted.mod,residuals.mod)
-plot(areas.without.outliers$log.prop.landscape2,residuals.mod)
+#plot(areas.without.outliers$log.prop.landscape2,residuals.mod)
 plot(areas.without.outliers$ELEVATION,residuals.mod)
 
 #The residuals look normaly distributed
@@ -480,3 +480,360 @@ abline(0,1)
 
 #Checking homogeneity of variance. SEEMS VERY GOOD
 plot(random_mod_2)
+```
+
+
+
+
+
+#Rotation analysis of home range
+# HW: prepare tables with results
+
+```{r}
+#Load raster
+forest<-raster("Map layers/Aug27_15rasters/forest27")
+
+#Read excel data base of patch id, patch size and % forest
+freq_patches<-read.xlsx("Data bases/Frequencies patches.xlsx",sheet=1)
+
+#Make an empty data base which will contain the information with NA's
+metrics.or.rot <- data.frame("PATCH_ID"=freq_patches$PATCH,"FREQ"=freq_patches$FREQ, "PROP.FOR.OR"=NA, "PROP.FOR.ROT"=NA, "PATCH.SIZE.OR"=NA, "PATCH.SIZE.ROT"=NA, "CONNECTIVITY.OR"=NA, "CONNECTIVITY.ROT"=NA, "CLASS.COINC.PROB.ORG"=NA, "CLASS.COINC.PROB.ROT"=NA)
+colnames(metrics.or.rot)<-c("PATCH_ID","FREQ","PROP.FOR.OR", "PROP.FOR.ROT", "PATCH.SIZE.OR", "PATCH.SIZE.ROT", "CONNECTIVITY.OR", "CONNECTIVITY.ROT", "CLASS.COINC.PROB.ORG", "CLASS.COINC.PROB.ROT")
+
+
+```
+
+
+#Step 2
+```{r}
+#Read functions. The only function here is the one that clips the original home range so that it can be rotated
+source("Rotation home range functions.R")
+
+#Obtain the frequencies from the isopleths data
+frequencies<-as.numeric(substr(names(isopleths.birds),1,3))
+
+#15 haspatch.cohesion.index of NA, repalce by 0
+
+#Start loop for all frequencies
+#for (i in c(1:11,13,15:17,19:21,23)){ #This row was active in the original code
+for (i in 1:length(frequencies)){
+  
+# Clip forest grid to polygon
+forest.clip <- clip(raster=forest, shape=isopleths.birds[[i]][5,])
+
+#Run this cod if I want to see the original homerange with the forest raster as a background
+jpeg(paste("Graphs/ID home_range_raster_map_id",frequencies[i],".jpg",sep=""),width=1000, height=1000, quality=100)
+
+forest.clip
+plot(forest.clip)
+lines(isopleths.birds[[i]][5,])
+
+dev.off()
+
+
+# Rotate and clip 
+#Rotate polygon and get coordinates of the new polygon but rotated (specify angle in degrees). Here because it is the original home range, rotate is set to 0
+HR.rotated <- elide(isopleths.birds[[i]][5,], rotate=0, 
+                    center=isopleths.birds[[i]]@polygons[[5]]@labpt)
+
+#Cuts the map for the new rotated home range
+forest.rotated <- clip(forest, shape=HR.rotated)
+  
+#jpeg(paste("Graphs/",frequencies[i],"home_range_raster.jpg",sep=""),
+#       width=1000, height=1000, quality=100)
+#  plot(forest.rotated)  
+#  lines(isopleths.birds[[1]][5,])
+#  lines(HR.rotated, col="red")
+#  dev.off()
+
+
+#Statitiscs of rotated polygon
+Res.rotated <- ClassStat(forest.rotated, cellsize=10)     # Within rotated homerange
+
+#Create data frame for the results fo the rotation of the home range
+rotated_analysis<-data.frame(matrix(nrow = 359, ncol = 5))
+colnames(rotated_analysis)<-c("class","prop_forest","mean_patch_size","connectivity","class_coincidence_prob")
+
+#Loop for rotating and getting the landscape statistics for all the rotated alternatives
+for(angle in 1:359)
+{
+  #Rotate polygon
+  HR.rotated <- elide(isopleths.birds[[i]][5,], rotate=angle,                      center=isopleths.birds[[i]]@polygons[[5]]@labpt)
+  
+#Cuts the map for the new rotated home range
+  forest.rotated <- clip(forest, shape=HR.rotated)
+  
+  #Plots the rotated home range with the forest raster map as a bakcground
+  #plot(forest.rotated)  
+  #lines(isopleths.birds[[1]][5,])
+  #lines(HR.rotated, col="red")
+  
+  #Statitiscs of rotated polygon
+  Res.rotated <- ClassStat(forest.rotated, cellsize=10)     # Within rotated homerange
+  
+  #Bind results of rotated home ranges with previous data base. When there is no forest in the home range, when I try to subset the information, a data base is generated with NA. Therefore, for each landscape metric, I am replacing the NA with 0 if there was no forest in the landscape. 
+  rotated_analysis$prop_forest[angle]<-ifelse(is.na(Res.rotated$prop.landscape[2])=="TRUE",0,Res.rotated$prop.landscape[2])
+  rotated_analysis$mean_patch_size[angle]<-ifelse(is.na(Res.rotated$mean.patch.area[2])=="TRUE",0,Res.rotated$mean.patch.area[2])
+  rotated_analysis$connectivity[angle]<-ifelse(is.na(Res.rotated$patch.cohesion.index[2])=="TRUE",0,Res.rotated$patch.cohesion.index[2])
+  rotated_analysis$class_coincidence_prob[angle]<-ifelse(is.na(Res.rotated$effective.mesh.size[2]/Res.rotated$total.area[2])=="TRUE",0,Res.rotated$effective.mesh.size[2]/Res.rotated$total.area[2])
+  
+    print(paste(angle,"of 359 of bird #",i))
+    
+}
+
+#Landscape metrics for original home range for the two landscape types
+Res.original<-ClassStat(forest.clip, cellsize=10)       # Within homerange
+
+#If the home range did not include forest, then I have to make a data frame with 0's and use it in the code above to obtain the forest statistics
+Res.original.with.zeros<-subset(Res.original,Res.original$class==1)[1,]
+Res.original.with.zeros[Res.original.with.zeros>0]<-0
+
+#The value for forest in the data frame is 2; therefore, if I stry to subset the landscape metrics values and the data frame does not have forest values, it will have 0 rows. If this happens, then I will use the data frame with 0's, otherwise I can subset the information as usual
+Res.original<-if(nrow(subset(Res.original,Res.original$class==2))==0){
+  Res.original<-Res.original.with.zeros
+}else{
+  subset(Res.original,Res.original$class==2)
+  
+}
+
+#Make a data frame with the landscape metrics of the original home range and that with the mean of the rotated alternatives
+metrics.or.rot$PROP.FOR.OR[i]<-Res.original$prop.landscape
+
+metrics.or.rot$PROP.FOR.ROT[i]<-mean(rotated_analysis$prop_forest,na.rm=T)
+
+metrics.or.rot$PATCH.SIZE.OR[i]<-Res.original$mean.patch.area
+
+metrics.or.rot$PATCH.SIZE.ROT[i]<-mean(rotated_analysis$mean_patch_size,na.rm=T)
+
+metrics.or.rot$CONNECTIVITY.OR[i]<-Res.original$patch.cohesion.index
+
+metrics.or.rot$CONNECTIVITY.ROT[i]<-mean(rotated_analysis$connectivity,na.rm=T)
+
+#If effective mes size and total area are 0, then when I divide both values I get an NaN. Therefore, if that happens I replace the NaN by 0
+metrics.or.rot$CLASS.COINC.PROB.ORG[i]<-ifelse(Res.original$effective.mesh.size==0 & Res.original$total.area==0,0,Res.original$effective.mesh.size/Res.original$total.area)
+
+metrics.or.rot$CLASS.COINC.PROB.ROT[i]<-mean(rotated_analysis$class_coincidence_prob,na.rm=T)
+
+
+
+print(paste(i,"of",nrow(metrics.or.rot)))
+
+}
+```
+
+
+
+#Boxplot graphs ofe each landscape variable
+Make boxplot with difference between variables
+Do code for t test with transformed data to sqrt arcsin
+Do wilcoxon test
+Do wicloxon test excluding the tie values
+```{r}
+metrics.or.rot.original<-metrics.or.rot
+
+
+#Boxplot with the values of the original and rotated home ranges landscape metrics
+metrics.or.rot %>% 
+  select(-PATCH_ID,-FREQ) %>% 
+  gather(landscape.metric,value,PROP.FOR.OR:CLASS.COINC.PROB.ROT) %>% 
+  mutate(home.range.class=if_else(substr(.$landscape.metric,nchar(.$landscape.metric)-1,nchar(.$landscape.metric))=="OR" | substr(t$landscape.metric,nchar(t$landscape.metric)-1,nchar(.$landscape.metric))=="RG" ,"Original","Rotated"),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PROP","Proportion of forest",landscape.metric),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PATC","Patch size",landscape.metric),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="CONN","Connectivity index",landscape.metric),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="CLAS","Class coincidence probability index",landscape.metric)) %>% 
+  ggplot(aes(x=home.range.class,y=value)) +
+  geom_boxplot() +
+  facet_wrap(~landscape.metric,scales="free") +
+  xlab("Home range") +
+  ylab("Value")
+
+
+#Boxplot for the difference between original and rotated home ranges with the different landscape metrics
+metrics.or.rot %>% 
+  select(-PATCH_ID,-FREQ) %>% 
+  mutate(PROP.FOR.DIFF=PROP.FOR.OR-PROP.FOR.ROT,
+         PATCH.SIZE.DIFF=PATCH.SIZE.OR-PATCH.SIZE.ROT,
+         CONNECTIVITY.DIFF=CONNECTIVITY.OR-CONNECTIVITY.ROT,
+         CLASS.COINC.PROB.DIFF=CLASS.COINC.PROB.ORG-CLASS.COINC.PROB.ROT) %>% 
+  gather(landscape.metric,value,PROP.FOR.DIFF:CLASS.COINC.PROB.DIFF) %>% 
+  mutate(landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PROP","Proportion of forest",landscape.metric),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PATC","Patch size",landscape.metric),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="CONN","Connectivity index",landscape.metric),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="CLAS","Class coincidence probability index",landscape.metric)) %>% 
+  ggplot(aes(x=landscape.metric,y=value)) +
+  geom_boxplot() +
+  facet_wrap(~landscape.metric,scales="free") +
+  xlab("Landscape metric") +
+  ylab("Difference between original and rotated home range")
+
+
+
+
+```
+
+####TEST FOR PROPORTION OF FOREST####
+
+```{r}
+
+#Perform the test
+t.test(metrics.or.rot$PROP.FOR.OR,metrics.or.rot$PROP.FOR.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot$PROP.FOR.OR-metrics.or.rot$PROP.FOR.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#I have to save the data base in long format to do the levene test
+metrics.or.rot.long<-metrics.or.rot %>% 
+  select(-PATCH_ID,-FREQ) %>% 
+  gather(landscape.metric,value,PROP.FOR.OR:CLASS.COINC.PROB.ROT) %>% 
+  mutate(home.range.class=if_else(substr(.$landscape.metric,nchar(.$landscape.metric)-1,nchar(.$landscape.metric))=="OR" | substr(t$landscape.metric,nchar(t$landscape.metric)-1,nchar(.$landscape.metric))=="RG" ,"Original","Rotated"),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PROP","Proportion of forest",landscape.metric),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PATC","Patch size",landscape.metric),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="CONN","Connectivity index",landscape.metric),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="CLAS","Class coincidence probability index",landscape.metric))
+
+
+#Perform test for homogeneity of variance. 
+leveneTest(subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Proportion of forest")$value~subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Proportion of forest")$home.range.class,las=2)
+
+#Take out situations where the original and rotated home range had  values of 1 and 1 or 0 and 0 (meaning that they were either completely on the forest or on the matrix and they did not had a choice to select)
+metrics.or.rot2<-metrics.or.rot %>% 
+  filter(PROP.FOR.OR!=1 & PROP.FOR.ROT!=1 | 
+           PROP.FOR.OR!=0 & PROP.FOR.ROT!=0) 
+  t.test(metrics.or.rot2$PROP.FOR.OR,metrics.or.rot2$PROP.FOR.ROT,paired=T)
+  
+  #Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot2$PROP.FOR.OR-metrics.or.rot2$PROP.FOR.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+
+
+#I DO NOT KNOW IF IT IS OK TO PERFORM THE TEST ON THE ORIGINAL VARIABLES. Therefore, I will transform the original variables (square root of the arcsine) as I do in proportion for an ANOVA test
+
+metrics.or.rot<-metrics.or.rot.original %>% 
+  mutate(PROP.FOR.OR=sqrt(asin(PROP.FOR.OR)),
+         PROP.FOR.ROT=sqrt(asin(PROP.FOR.ROT)))
+
+#Perform the test
+t.test(metrics.or.rot$PROP.FOR.OR,metrics.or.rot$PROP.FOR.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot$PROP.FOR.OR-metrics.or.rot$PROP.FOR.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform a non parametric test
+wilcox.test(metrics.or.rot.original$PROP.FOR.OR, metrics.or.rot.original$PROP.FOR.ROT, paired = TRUE, alternative = "two.sided")
+
+metrics.or.rot.original.without.zeros<-metrics.or.rot.original %>% 
+  mutate(diff=PROP.FOR.OR-PROP.FOR.ROT) %>% 
+  filter(diff!=0)
+wilcox.test(metrics.or.rot.original.without.zeros$PROP.FOR.OR,metrics.or.rot.original.without.zeros$PROP.FOR.ROT, paired = TRUE, alternative = "two.sided")
+
+```
+
+
+
+####TEST FOR PATCH SIZE####
+
+```{r}
+
+#Perform the test
+t.test(metrics.or.rot$PATCH.SIZE.OR,metrics.or.rot$PATCH.SIZE.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot$PATCH.SIZE.OR-metrics.or.rot$PATCH.SIZE.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+
+#Perform test for homogeneity of variance. 
+leveneTest(subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Patch size")$value~subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Patch size")$home.range.class,las=2)
+
+
+
+#Perform a non parametric test
+wilcox.test(metrics.or.rot.original$PATCH.SIZE.OR, metrics.or.rot.original$PATCH.SIZE.ROT, paired = TRUE, alternative = "two.sided")
+
+metrics.or.rot.original.without.zeros<-metrics.or.rot.original %>% 
+  mutate(diff=PATCH.SIZE.OR-PATCH.SIZE.ROT) %>% 
+  filter(diff!=0)
+wilcox.test(metrics.or.rot.original.without.zeros$PATCH.SIZE.OR,metrics.or.rot.original.without.zeros$PATCH.SIZE.ROT, paired = TRUE, alternative = "two.sided")
+
+```
+
+
+####TEST FOR CONNECTIVITY####
+
+```{r}
+
+#Perform the test
+t.test(metrics.or.rot$CONNECTIVITY.OR,metrics.or.rot$CONNECTIVITY.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot$CONNECTIVITY.OR-metrics.or.rot$CONNECTIVITY.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+#Perform test for homogeneity of variance. 
+leveneTest(subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Connectivity index")$value~subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Connectivity index")$home.range.class,las=2)
+
+
+#Perform a non parametric test
+wilcox.test(metrics.or.rot.original$CONNECTIVITY.OR, metrics.or.rot.original$CONNECTIVITY.ROT, paired = TRUE, alternative = "two.sided")
+
+metrics.or.rot.original.without.zeros<-metrics.or.rot.original %>% 
+  mutate(diff=CONNECTIVITY.OR-CONNECTIVITY.ROT) %>% 
+  filter(diff!=0)
+wilcox.test(metrics.or.rot.original.without.zeros$CONNECTIVITY.OR,metrics.or.rot.original.without.zeros$CONNECTIVITY.ROT, paired = TRUE, alternative = "two.sided")
+
+```
+
+
+####TEST FOR CLASS COINCIDENCE PROBABILITY WITH 0'S####
+
+```{r}
+
+#Perform the test
+t.test(metrics.or.rot$CLASS.COINC.PROB.ORG,metrics.or.rot$CLASS.COINC.PROB.ROT,paired=T)
+
+#Obtain the difference between treatments to test the assumptions
+diff<-metrics.or.rot$CLASS.COINC.PROB.ORG-metrics.or.rot$CLASS.COINC.PROB.ROT
+
+#Test normality of the data
+hist(diff)
+library("car")
+qqPlot(diff)
+shapiro.test(diff)
+
+
+#Perform test for homogeneity of variance. 
+leveneTest(subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Class coincidence probability index")$value~subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Class coincidence probability index")$home.range.class,las=2)
+
+
+#Perform a non parametric test
+wilcox.test(metrics.or.rot.original$CLASS.COINC.PROB.ORG, metrics.or.rot.original$CLASS.COINC.PROB.ROT, paired = TRUE, alternative = "two.sided")
+
+```
