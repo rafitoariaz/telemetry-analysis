@@ -1,0 +1,343 @@
+---
+title: "Telemetry analysis clay colored thrush"
+author: "Luis Antonio Arias Medellin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Load required packages
+
+```{r, include=FALSE}
+#Load libraries
+library("openxlsx")
+library("NISTunits")
+library("rgdal")
+library("ggmap")
+library("SDMTools")
+library("raster")
+library("MetaLandSim") # need to run code source("https://bioconductor.org/biocLite.R") biocLite("Biobase")
+library("rgeos")
+library("maps")
+library("maptools")
+library("geosphere")
+library("tlocoh") #Install using #http://tlocoh.r-forge.r-project.org/manual_install.html instructions and 
+#https://r-forge.r-project.org/R/?group_id=1622 ZIP FILE
+#Ubuntu
+#http://stackoverflow.com/questions/15248815/rgdal-package-installation for rgdal
+#You have also to install packages rgeos and pbapply
+#http://tlocoh.r-forge.r-project.org/manual_install.html step 5 at bottom of web page for tlocoh
+```
+
+## FORMAT DATA BASE FOR ANALYSIS
+
+http://tlocoh.r-forge.r-project.org/tips/isopleth_overlap_auto.html
+
+```{r, include=FALSE}
+
+#Remove anything on workspace
+rm(list=ls(all=TRUE))
+
+#Set working directory
+#setwd("Z:/Data bases")
+#setwd("/media/ResNAS/Data bases")
+
+#Source functions
+#source("Z:/R code/Telemetry_analysis_clay_colored_thrush_functions.R")
+#source("Telemetry_analysis_clay_colored_thrush_functions_a_method.R")
+#source("Telemetry_analysis_clay_colored_thrush_functions_a_method_HW.R")
+source("Clean telemetry data base.R")
+source("buffer 30 vs buffer 500 functions HW v1.R")
+
+#Fuction for cleaning telemetry data base
+clean.tel.data()
+
+#Problems
+#312 (10) because points are very separated and do not know if they are ok
+#881 (26) 910, 672 (40) 760 (29) 702, 591 (49) error with time stamps
+#Missing info from patch 431 (28)
+
+
+#Done 821 (33) 851 (56) 472 (24) 631 (32) 942 (53) 171 (58) 232 (10) 273 (31)
+#511 (34 weird points) 202 (36) 
+
+
+
+#Table of frequency of birds that were followed
+#table(prueba$FREQ) #24 birds with frequency
+#dim(table(prueba$FREQ))
+#Mean and sd that birds were followed
+sampling<-aggregate(prueba,by=list(prueba$FREQ,prueba$DATE),FUN=length)
+sampling<-sampling[order(sampling$Group.1),]
+sampling$days<-1
+sampling_aggregate<-aggregate(sampling$days,by=list(sampling$Group.1),FUN=sum)
+summary(sampling_aggregate[-13,])
+sd(sampling_aggregate[-13]$x)
+
+#Number of points obtained per individual
+points<-prueba
+points$num<-1
+points<-aggregate(points$num,by=list(points$FREQ),FUN=sum)
+points
+#summary(points$x)
+sd(subset(points,points$x>1)$x)
+
+
+hours<-prueba
+hours$follow<-difftime(hours$STOP,hours$START,units="hours")
+hours<-unique(hours[c("FREQ","DATE","follow")])
+hours[order(hours$FREQ),]
+hours_sum<-aggregate(hours$follow,by=list(hours$FREQ),FUN=sum)
+#summary(as.numeric(hours_sum$x))
+
+#FREQ 821: July 14 nobody sampled a bird
+#FREQ 942: July 27 and 29 were sampled by Mau but the information is not in data base
+#FREQ 171:  Aug 3 was not sampled but Mau took information and it is not in the data base
+#FREQ 973: on July 20 was followed but eaten by a hawk. The radio transmitter was
+#recovered and used for other individual followed in August.
+#FREQ 392: July 28 was not included and was followed by Mau
+#FREQ 273: Aug 5 and 6 was not included and was followed by Tocho and Mau, respectively
+#FREQ 472: was followed on Aug 12 but in data base it says Aug 13
+#FREQ 511: Aug 9 was sampled by Mau but it is not in the data base
+#FREQ 202: followed on Aug 19 and is not in data base but Aug 20 is on data base. Maybe typing mistake
+#FREQ 791: followed on Aug 19 and is not in data base but Aug 20 is on data base. Maybe typing mistake
+#FREQ 910: followed by Luis but not in data base. In calendar I do not have the date in which I followed it
+#FREQ 672: Aug 19 followed by Mau bot it is not in data base
+#FREQ 760: Aug 27 and 29 followed by Luis and Mau respectively but no in data base
+#Frequ 591: followed Sept 9 but not in data base but Sept 8 is in data base althgough not followed on that day. Maybe typing mistake
+
+#table(format(subset(prueba,prueba$FREQ==591)$DATE,"%B-%d"))
+#subset(prueba,prueba$FREQ==821 & prueba$DATE=="2016-07-14")[,1:11]
+#subset(prueba,prueba$FREQ==942)[,1:11]
+
+#table(prueba$FREQ,prueba$DATE)
+
+#Merge frequency data with patch id information
+#Read excel data base of patch id, patch size and % forest
+#freq_patches<-read.xlsx("Frequencies patches.xlsx",sheet=1)
+freq_patches<-read.xlsx("Data bases/Frequencies patches.xlsx",sheet=1)
+
+#Merge patches with elevation with frequencies
+prueba<-merge(prueba,freq_patches,by="FREQ",all=F)
+
+#
+aggregate(PATCH ~ FREQ, data = prueba, FUN = length)
+
+```
+
+# HW: prepare tables with results
+
+```{r}
+#Load raster
+forest<-raster("Map layers/Aug27_15rasters/forest27")
+
+#Individual frequencies
+Frequencies <- unique(prueba$FREQ)
+
+#Format utm coordinates
+utm_formated<-prueba[,c("PATCH","FREQ","LOCATION.X","LOCATION.Y")]
+utm_formated[3:4]<-coordinates(utm_formated[3:4])
+colnames(utm_formated)[3:4]<-c("x","y")
+
+# HW: Prepare empty data frame:
+
+#points.info <- data.frame(matrix(NA, 
+#                nrow=nrow(prueba), ncol=4, 
+#                dimnames=list(1:nrow(prueba), c("PATCH_ID", "FREQ",
+#                         "PROP.FOR.30", "PROP.FOR.500"))))
+
+points.info <- data.frame(prueba$PATCH,prueba$FREQ,prueba$LOCATION.X,prueba$LOCATION.Y,"PROP.FOR.30"==0,"PROP.FOR.500"==0)
+colnames(points.info)<-c("PATCH_ID","FREQ","LOCATION.X","LOCATION.Y","PROP.FOR.30","PROP.FOR.500")
+
+```
+
+# HW: Step 1 - Check data
+
+For each frequency, check data and drop observations that are invalid, e.g. duplicates. 
+
+```{r, include=FALSE}
+clean.freq()
+```
+
+#Step 2
+```{r}
+
+#Obtain proportion of forest in a 30 and 500 m buffer
+prop.forest.30.500()
+
+```
+
+
+
+
+```{r,echo=F}
+
+#ANALYSIS FOR PROPORTION OF FOREST FOR INDIVIDUAL POINT LOCATIONS (30 AND 500 M BUFFER)
+
+
+#Load file of sampling points classess
+points.info<-read.csv("Data base 30 500 buffer.csv")
+
+
+panel.hist <- function(x, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(usr[1:2], 0, 1.5) )
+    h <- hist(x, plot = FALSE)
+    breaks <- h$breaks; nB <- length(breaks)
+    y <- h$counts; y <- y/max(y)
+    rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+}
+
+
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- abs(cor(x, y))
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+
+#pairs(points.info[c("PROP.FOR.500","PROP.FOR.30")],upper.panel=panel.cor,diag.panel=panel.hist,panel=panel.smooth,main="Raw data")
+
+#The data seems not normally distributed. See if log transformation helps to normalize data. I DO NOT KNOW HOW TO TRANSFORM THESE DATA, FOR NOW I WILL CONTINUE
+```
+
+```{r}
+#Set the difference between used and observed proportion of forest
+points.info$diff<-points.info$PROP.FOR.30-points.info$PROP.FOR.500
+
+pairs(points.info[c("PROP.FOR.500","diff")],upper.panel=panel.cor,diag.panel=panel.hist,panel=panel.smooth,main="Raw data")
+
+#We have GPS points for each bird, and sometimes we have more than 1 bird per patch. Therefore, bird is nested in patch. I will perform the model in that way
+#Set patch and frequency as factors
+points.info$PATCH_ID<-as.factor(points.info$PATCH_ID)
+points.info$FREQ<-as.factor(points.info$FREQ)
+
+
+library("nlme")
+model1<-lme(diff~PROP.FOR.500,random= ~1|PATCH_ID/FREQ, data=points.info)
+#model2<-lme(PROP.FOR.30~PROP.FOR.500,random=~1|FREQ,data=points.info)
+
+summary(model1)
+
+#Check assumptions of model
+#Normality of residuals
+#The residuals look normaly distributed
+library("car")
+qqPlot(model1$residuals)
+
+#Homogeneity of variance
+plot(model1)
+
+#Make variable of transfromed data
+points.info$SQRT.PROP.FOR.500<-sqrt(points.info$PROP.FOR.500)
+points.info$LOG.diff<-log(points.info$diff+1)
+
+pairs(points.info[c("SQRT.PROP.FOR.500","LOG.diff")],upper.panel=panel.cor,diag.panel=panel.hist,panel=panel.smooth,main="Raw data")
+
+
+model2<-lme(log(diff+1)~sqrt(PROP.FOR.500),random= ~1|PATCH_ID/FREQ, data=points.info)
+#model2<-lme(PROP.FOR.30~PROP.FOR.500,random=~1|FREQ,data=points.info)
+
+summary(model2)
+
+par(mfrow=c(1,1))
+#Check assumptions of model
+#Normality of residuals
+#The residuals look normaly distributed
+qqPlot(model2$residuals)
+
+#Homogeneity of variance
+plot(model2)
+```
+
+
+```{r}
+
+#Do plot with points for mean proportion of forest in used vs available
+#Generate mean proportion of forest per individual
+mean_prop_for_ind<-aggregate(points.info$diff,by=list(FREQ=points.info$FREQ),
+                             FUN=mean)
+
+#Rename columns
+colnames(mean_prop_for_ind)[2]<-"mean_diff_prop_for_ind"
+
+#Generate standard deviation of proportion of forest per individual
+se_prop_for_ind<-aggregate(points.info$diff,by=list(FREQ=points.info$FREQ),
+                             FUN=sd)
+
+#Rename columns
+colnames(se_prop_for_ind)[2]<-"se_diff_prop_for_ind"
+
+#Count the number of points per indivdual
+points_per_ind<-aggregate(points.info$diff,by=list(FREQ=points.info$FREQ),
+                             FUN=length)
+
+#Rename columns
+colnames(points_per_ind)[2]<-"point_per_ind"
+
+
+#Generate standard error by dividing sd/n
+se_prop_for_ind$se_diff_prop_for_ind<-se_prop_for_ind$se_diff_prop_for_ind/points_per_ind$point_per_ind
+
+#Merge mean with se of each frequency
+mean_prop_for_ind<-merge(mean_prop_for_ind,se_prop_for_ind,by="FREQ",all=F)
+
+
+
+
+
+#Generate mean proportion of forest per individual
+mean_prop_for_av<-aggregate(points.info$PROP.FOR.500,by=list(FREQ=points.info$FREQ),
+                             FUN=mean)
+
+#Rename columns
+colnames(mean_prop_for_av)[2]<-"mean_PROP.FOR.500_prop_av"
+
+#Generate standard deviation of proportion of forest per individual
+se_prop_for_av<-aggregate(points.info$PROP.FOR.500,by=list(FREQ=points.info$FREQ),
+                           FUN=sd)
+
+#Rename columns
+colnames(se_prop_for_av)[2]<-"se_PROP.FOR.500_prop_for_av"
+
+#Generate standard error by dividing sd/n
+se_prop_for_av$se_PROP.FOR.500_prop_for_av<-se_prop_for_av$se_PROP.FOR.500_prop_for_av/points_per_ind$point_per_ind
+
+#Merge mean with se of each frequency
+mean_prop_for_av<-merge(mean_prop_for_av,se_prop_for_av,by="FREQ",all=F)
+
+#Merge with data base of mean proportion of forest per individual
+mean_prop_for_ind<-merge(mean_prop_for_ind,mean_prop_for_av,by="FREQ",all=F)
+
+
+################################################
+#Merge databases of mean proportion of forest in used areas (30m buffer) with proportion of forest in 
+#buffer equal to the largest home range
+##########################################
+
+#Plot
+#plot(mean_prop_for_ind$log_prop.landscape,mean_prop_for_ind$mean_prop_for,xlab="Log proportion of forest inside 4.97 ha buffer",
+jpeg("Graphs/Used minus available individual GPS points.jpg",quality=100,width=1000,height=700)
+par(mar=c(8,8,3,2))
+plot(mean_prop_for_ind$mean_PROP.FOR.500_prop_av,mean_prop_for_ind$mean_diff_prop_for_ind,xlab="",
+     ylab="",
+     ylim=c(min(mean_prop_for_ind$mean_diff_prop_for_ind-mean_prop_for_ind$se_diff_prop_for_ind),
+            max(mean_prop_for_ind$mean_diff_prop_for_ind+mean_prop_for_ind$se_diff_prop_for_ind)),
+     cex.axis=2,cex.lab=2,lwd=3,pch=16,cex=2,col="red")
+mtext(text="Mean difference in proportion of forest",side=2,line=5,cex=2)
+mtext(text="Log proportion of forest in available areas",side=1,line=5,cex=2)
+segments(x0=mean_prop_for_ind$mean_PROP.FOR.500_prop_av-mean_prop_for_ind$se_PROP.FOR.500_prop_for_av, 
+         x1=mean_prop_for_ind$mean_PROP.FOR.500_prop_av-mean_prop_for_ind$se_PROP.FOR.500_prop_for_av,
+         y0=mean_prop_for_ind$mean_diff_prop_for_ind-mean_prop_for_ind$se_diff_prop_for_ind, 
+         y1=mean_prop_for_ind$mean_diff_prop_for_ind+mean_prop_for_ind$se_diff_prop_for_ind,lwd=2)
+abline(h=0,lty=2,lwd=3,col="black")
+dev.off()
+```
+
+```{r}
+hist(mean_prop_for_ind$mean_diff_prop_for_ind)
+```
