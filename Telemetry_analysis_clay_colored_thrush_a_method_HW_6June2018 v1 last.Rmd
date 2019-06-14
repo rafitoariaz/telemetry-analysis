@@ -27,6 +27,9 @@ library("tlocoh") #Install using #http://tlocoh.r-forge.r-project.org/manual_ins
 #http://stackoverflow.com/questions/15248815/rgdal-package-installation for rgdal
 #You have also to install packages rgeos and pbapply
 #http://tlocoh.r-forge.r-project.org/manual_install.html step 5 at bottom of web page for tlocoh
+library("car")
+library("dplyr")
+library("tidyr")
 ```
 
 ## FORMAT DATA BASE FOR ANALYSIS
@@ -605,7 +608,7 @@ metrics.or.rot$PATCH.SIZE.OR[i]<-Res.original$mean.patch.area
 
 metrics.or.rot$PATCH.SIZE.ROT[i]<-mean(rotated_analysis$mean_patch_size,na.rm=T)
 
-metrics.or.rot$CONNECTIVITY.OR[i]<-Res.original$patch.cohesion.index
+metrics.or.rot$CONNECTIVITY.OR[i]<-ifelse(is.na(Res.original$patch.cohesion.index)=="TRUE",0,Res.original$patch.cohesion.index)
 
 metrics.or.rot$CONNECTIVITY.ROT[i]<-mean(rotated_analysis$connectivity,na.rm=T)
 
@@ -634,9 +637,9 @@ metrics.or.rot.original<-metrics.or.rot
 
 #Boxplot with the values of the original and rotated home ranges landscape metrics
 metrics.or.rot %>% 
-  select(-PATCH_ID,-FREQ) %>% 
-  gather(landscape.metric,value,PROP.FOR.OR:CLASS.COINC.PROB.ROT) %>% 
-  mutate(home.range.class=if_else(substr(.$landscape.metric,nchar(.$landscape.metric)-1,nchar(.$landscape.metric))=="OR" | substr(t$landscape.metric,nchar(t$landscape.metric)-1,nchar(.$landscape.metric))=="RG" ,"Original","Rotated"),
+  dplyr::select(-PATCH_ID,-FREQ) %>% 
+  tidyr::gather(landscape.metric,value,PROP.FOR.OR:CLASS.COINC.PROB.ROT) %>% 
+  mutate(home.range.class=if_else(substr(.$landscape.metric,nchar(.$landscape.metric)-1,nchar(.$landscape.metric))=="OR" | substr(.$landscape.metric,nchar(.$landscape.metric)-1,nchar(.$landscape.metric))=="RG" ,"Original","Rotated"),
          landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PROP","Proportion of forest",landscape.metric),
          landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PATC","Patch size",landscape.metric),
          landscape.metric=if_else(substr(.$landscape.metric,1,4)=="CONN","Connectivity index",landscape.metric),
@@ -650,13 +653,13 @@ metrics.or.rot %>%
 
 #Boxplot for the difference between original and rotated home ranges with the different landscape metrics
 metrics.or.rot %>% 
-  select(-PATCH_ID,-FREQ) %>% 
-  mutate(PROP.FOR.DIFF=PROP.FOR.OR-PROP.FOR.ROT,
+  dplyr::select(-PATCH_ID,-FREQ) %>% 
+  dplyr::mutate(PROP.FOR.DIFF=PROP.FOR.OR-PROP.FOR.ROT,
          PATCH.SIZE.DIFF=PATCH.SIZE.OR-PATCH.SIZE.ROT,
          CONNECTIVITY.DIFF=CONNECTIVITY.OR-CONNECTIVITY.ROT,
          CLASS.COINC.PROB.DIFF=CLASS.COINC.PROB.ORG-CLASS.COINC.PROB.ROT) %>% 
-  gather(landscape.metric,value,PROP.FOR.DIFF:CLASS.COINC.PROB.DIFF) %>% 
-  mutate(landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PROP","Proportion of forest",landscape.metric),
+  tidyr::gather(landscape.metric,value,PROP.FOR.DIFF:CLASS.COINC.PROB.DIFF) %>% 
+  dplyr::mutate(landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PROP","Proportion of forest",landscape.metric),
          landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PATC","Patch size",landscape.metric),
          landscape.metric=if_else(substr(.$landscape.metric,1,4)=="CONN","Connectivity index",landscape.metric),
          landscape.metric=if_else(substr(.$landscape.metric,1,4)=="CLAS","Class coincidence probability index",landscape.metric)) %>% 
@@ -682,16 +685,16 @@ t.test(metrics.or.rot$PROP.FOR.OR,metrics.or.rot$PROP.FOR.ROT,paired=T)
 diff<-metrics.or.rot$PROP.FOR.OR-metrics.or.rot$PROP.FOR.ROT
 
 #Test normality of the data
-hist(diff)
+hist(diff) #The data does not look normally distributed
 library("car")
 qqPlot(diff)
 shapiro.test(diff)
 
 #I have to save the data base in long format to do the levene test
 metrics.or.rot.long<-metrics.or.rot %>% 
-  select(-PATCH_ID,-FREQ) %>% 
-  gather(landscape.metric,value,PROP.FOR.OR:CLASS.COINC.PROB.ROT) %>% 
-  mutate(home.range.class=if_else(substr(.$landscape.metric,nchar(.$landscape.metric)-1,nchar(.$landscape.metric))=="OR" | substr(t$landscape.metric,nchar(t$landscape.metric)-1,nchar(.$landscape.metric))=="RG" ,"Original","Rotated"),
+  dplyr::select(-PATCH_ID,-FREQ) %>% 
+  tidyr::gather(landscape.metric,value,PROP.FOR.OR:CLASS.COINC.PROB.ROT) %>% 
+  mutate(home.range.class=if_else(substr(.$landscape.metric,nchar(.$landscape.metric)-1,nchar(.$landscape.metric))=="OR" | substr(.$landscape.metric,nchar(.$landscape.metric)-1,nchar(.$landscape.metric))=="RG" ,"Original","Rotated"),
          landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PROP","Proportion of forest",landscape.metric),
          landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PATC","Patch size",landscape.metric),
          landscape.metric=if_else(substr(.$landscape.metric,1,4)=="CONN","Connectivity index",landscape.metric),
@@ -711,7 +714,7 @@ metrics.or.rot2<-metrics.or.rot %>%
 diff<-metrics.or.rot2$PROP.FOR.OR-metrics.or.rot2$PROP.FOR.ROT
 
 #Test normality of the data
-hist(diff)
+hist(diff) #Still the difference is not normaly distributed
 library("car")
 qqPlot(diff)
 shapiro.test(diff)
@@ -731,18 +734,19 @@ t.test(metrics.or.rot$PROP.FOR.OR,metrics.or.rot$PROP.FOR.ROT,paired=T)
 diff<-metrics.or.rot$PROP.FOR.OR-metrics.or.rot$PROP.FOR.ROT
 
 #Test normality of the data
-hist(diff)
+hist(diff) #Still data is not normally distrbuted
 library("car")
 qqPlot(diff)
 shapiro.test(diff)
 
 #Perform a non parametric test
-wilcox.test(metrics.or.rot.original$PROP.FOR.OR, metrics.or.rot.original$PROP.FOR.ROT, paired = TRUE, alternative = "two.sided")
+wilcox.test(metrics.or.rot.original$PROP.FOR.OR, metrics.or.rot.original$PROP.FOR.ROT, paired = TRUE, alternative = "two.sided") #RESULT: No differences
 
+#Perform non parametric test without ties
 metrics.or.rot.original.without.zeros<-metrics.or.rot.original %>% 
   mutate(diff=PROP.FOR.OR-PROP.FOR.ROT) %>% 
   filter(diff!=0)
-wilcox.test(metrics.or.rot.original.without.zeros$PROP.FOR.OR,metrics.or.rot.original.without.zeros$PROP.FOR.ROT, paired = TRUE, alternative = "two.sided")
+wilcox.test(metrics.or.rot.original.without.zeros$PROP.FOR.OR,metrics.or.rot.original.without.zeros$PROP.FOR.ROT, paired = TRUE, alternative = "two.sided") #RESULT: No differences
 
 ```
 
@@ -753,30 +757,20 @@ wilcox.test(metrics.or.rot.original.without.zeros$PROP.FOR.OR,metrics.or.rot.ori
 ```{r}
 
 #Perform the test
-t.test(metrics.or.rot$PATCH.SIZE.OR,metrics.or.rot$PATCH.SIZE.ROT,paired=T)
+t.test(metrics.or.rot$PATCH.SIZE.OR,metrics.or.rot$PATCH.SIZE.ROT,paired=T) #RESULT: no differences
 
 #Obtain the difference between treatments to test the assumptions
 diff<-metrics.or.rot$PATCH.SIZE.OR-metrics.or.rot$PATCH.SIZE.ROT
 
 #Test normality of the data
-hist(diff)
+hist(diff) #Looks normally distributed
 library("car")
 qqPlot(diff)
-shapiro.test(diff)
+shapiro.test(diff) #Test for normality confirms normal distribution
 
 
 #Perform test for homogeneity of variance. 
-leveneTest(subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Patch size")$value~subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Patch size")$home.range.class,las=2)
-
-
-
-#Perform a non parametric test
-wilcox.test(metrics.or.rot.original$PATCH.SIZE.OR, metrics.or.rot.original$PATCH.SIZE.ROT, paired = TRUE, alternative = "two.sided")
-
-metrics.or.rot.original.without.zeros<-metrics.or.rot.original %>% 
-  mutate(diff=PATCH.SIZE.OR-PATCH.SIZE.ROT) %>% 
-  filter(diff!=0)
-wilcox.test(metrics.or.rot.original.without.zeros$PATCH.SIZE.OR,metrics.or.rot.original.without.zeros$PATCH.SIZE.ROT, paired = TRUE, alternative = "two.sided")
+leveneTest(subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Patch size")$value~subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Patch size")$home.range.class,las=2) #Variances are homogeneus
 
 ```
 
@@ -792,10 +786,10 @@ t.test(metrics.or.rot$CONNECTIVITY.OR,metrics.or.rot$CONNECTIVITY.ROT,paired=T)
 diff<-metrics.or.rot$CONNECTIVITY.OR-metrics.or.rot$CONNECTIVITY.ROT
 
 #Test normality of the data
-hist(diff)
+hist(diff) #Looks like normally distributed
 library("car")
 qqPlot(diff)
-shapiro.test(diff)
+shapiro.test(diff) #qq plot and shaprio test state that it is not normally distributed
 
 #Perform test for homogeneity of variance. 
 leveneTest(subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Connectivity index")$value~subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Connectivity index")$home.range.class,las=2)
@@ -804,10 +798,11 @@ leveneTest(subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Con
 #Perform a non parametric test
 wilcox.test(metrics.or.rot.original$CONNECTIVITY.OR, metrics.or.rot.original$CONNECTIVITY.ROT, paired = TRUE, alternative = "two.sided")
 
+#Non-parametric test without ties
 metrics.or.rot.original.without.zeros<-metrics.or.rot.original %>% 
   mutate(diff=CONNECTIVITY.OR-CONNECTIVITY.ROT) %>% 
   filter(diff!=0)
-wilcox.test(metrics.or.rot.original.without.zeros$CONNECTIVITY.OR,metrics.or.rot.original.without.zeros$CONNECTIVITY.ROT, paired = TRUE, alternative = "two.sided")
+wilcox.test(metrics.or.rot.original.without.zeros$CONNECTIVITY.OR,metrics.or.rot.original.without.zeros$CONNECTIVITY.ROT, paired = TRUE, alternative = "two.sided") #RESULT: no differences
 
 ```
 
@@ -823,10 +818,10 @@ t.test(metrics.or.rot$CLASS.COINC.PROB.ORG,metrics.or.rot$CLASS.COINC.PROB.ROT,p
 diff<-metrics.or.rot$CLASS.COINC.PROB.ORG-metrics.or.rot$CLASS.COINC.PROB.ROT
 
 #Test normality of the data
-hist(diff)
+hist(diff) #Distribution looks skewed
 library("car")
 qqPlot(diff)
-shapiro.test(diff)
+shapiro.test(diff) #Test confirms that distibution is skewed
 
 
 #Perform test for homogeneity of variance. 
@@ -834,6 +829,6 @@ leveneTest(subset(metrics.or.rot.long,metrics.or.rot.long$landscape.metric=="Cla
 
 
 #Perform a non parametric test
-wilcox.test(metrics.or.rot.original$CLASS.COINC.PROB.ORG, metrics.or.rot.original$CLASS.COINC.PROB.ROT, paired = TRUE, alternative = "two.sided")
+wilcox.test(metrics.or.rot.original$CLASS.COINC.PROB.ORG, metrics.or.rot.original$CLASS.COINC.PROB.ROT, paired = TRUE, alternative = "two.sided") #RESULT: no differences
 
 ```
