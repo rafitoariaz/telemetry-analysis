@@ -37,14 +37,7 @@ http://tlocoh.r-forge.r-project.org/tips/isopleth_overlap_auto.html
 #Remove anything on workspace
 rm(list=ls(all=TRUE))
 
-#Set working directory
-#setwd("Z:/Data bases")
-#setwd("/media/ResNAS/Data bases")
-
 #Source functions
-#source("Z:/R code/Telemetry_analysis_clay_colored_thrush_functions.R")
-#source("Telemetry_analysis_clay_colored_thrush_functions_a_method.R")
-#source("Telemetry_analysis_clay_colored_thrush_functions_a_method_HW.R")
 source("Clean telemetry data base.R")
 source("buffer 30 vs buffer 500 functions HW v1.R")
 
@@ -65,12 +58,12 @@ clean.tel.data()
 #Table of frequency of birds that were followed
 #table(prueba$FREQ) #24 birds with frequency
 #dim(table(prueba$FREQ))
-#Mean and sd that birds were followed
+#Mean and sd of number of days that birds were followed
 sampling<-aggregate(prueba,by=list(prueba$FREQ,prueba$DATE),FUN=length)
 sampling<-sampling[order(sampling$Group.1),]
 sampling$days<-1
 sampling_aggregate<-aggregate(sampling$days,by=list(sampling$Group.1),FUN=sum)
-summary(sampling_aggregate[-13,])
+summary(sampling_aggregate[-13,]) #I do not know why I am taking out this row. It might be that it was the bird that was eaten by the hawk
 sd(sampling_aggregate[-13]$x)
 
 #Number of points obtained per individual
@@ -78,7 +71,7 @@ points<-prueba
 points$num<-1
 points<-aggregate(points$num,by=list(points$FREQ),FUN=sum)
 points
-#summary(points$x)
+summary(points$x)
 sd(subset(points,points$x>1)$x)
 
 
@@ -87,7 +80,7 @@ hours$follow<-difftime(hours$STOP,hours$START,units="hours")
 hours<-unique(hours[c("FREQ","DATE","follow")])
 hours[order(hours$FREQ),]
 hours_sum<-aggregate(hours$follow,by=list(hours$FREQ),FUN=sum)
-#summary(as.numeric(hours_sum$x))
+summary(as.numeric(hours_sum$x))
 
 #FREQ 821: July 14 nobody sampled a bird
 #FREQ 942: July 27 and 29 were sampled by Mau but the information is not in data base
@@ -139,12 +132,6 @@ utm_formated[3:4]<-coordinates(utm_formated[3:4])
 colnames(utm_formated)[3:4]<-c("x","y")
 
 # HW: Prepare empty data frame:
-
-#points.info <- data.frame(matrix(NA, 
-#                nrow=nrow(prueba), ncol=4, 
-#                dimnames=list(1:nrow(prueba), c("PATCH_ID", "FREQ",
-#                         "PROP.FOR.30", "PROP.FOR.500"))))
-
 points.info <- data.frame(prueba$PATCH,prueba$FREQ,prueba$LOCATION.X,prueba$LOCATION.Y,"PROP.FOR.30"==0,"PROP.FOR.500"==0)
 colnames(points.info)<-c("PATCH_ID","FREQ","LOCATION.X","LOCATION.Y","PROP.FOR.30","PROP.FOR.500")
 
@@ -200,15 +187,28 @@ panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
     text(0.5, 0.5, txt, cex = cex.cor * r)
 }
 
-#pairs(points.info[c("PROP.FOR.500","PROP.FOR.30")],upper.panel=panel.cor,diag.panel=panel.hist,panel=panel.smooth,main="Raw data")
-
-#The data seems not normally distributed. See if log transformation helps to normalize data. I DO NOT KNOW HOW TO TRANSFORM THESE DATA, FOR NOW I WILL CONTINUE
 ```
 
 ```{r}
 #Set the difference between used and observed proportion of forest
 points.info$diff<-points.info$PROP.FOR.30-points.info$PROP.FOR.500
 
+#This graph shows how the difference between used and available forest is shifting around 0
+points.info %>% 
+  ggplot(aes(x=FREQ,y=diff)) +
+  geom_boxplot()
+
+#The individual graphs show how even though there are different proportion of forest in 500 meters, the animals move in areas with and without forest
+points.info %>% 
+  ggplot(aes(x=PROP.FOR.500,y=PROP.FOR.30)) +
+  geom_point() +
+  #geom_smooth(method="lm") +
+  facet_wrap(~FREQ)
+```
+
+
+```{r}
+#Plot pairs
 pairs(points.info[c("PROP.FOR.500","diff")],upper.panel=panel.cor,diag.panel=panel.hist,panel=panel.smooth,main="Raw data")
 
 #We have GPS points for each bird, and sometimes we have more than 1 bird per patch. Therefore, bird is nested in patch. I will perform the model in that way
@@ -218,40 +218,43 @@ points.info$FREQ<-as.factor(points.info$FREQ)
 
 
 library("nlme")
-model1<-lme(diff~PROP.FOR.500,random= ~1|PATCH_ID/FREQ, data=points.info)
-#model2<-lme(PROP.FOR.30~PROP.FOR.500,random=~1|FREQ,data=points.info)
+model1<-lme(diff~PROP.FOR.500,random= ~1|PATCH_ID/FREQ, data=points.info) #Random slope
+model2<-lme(diff~PROP.FOR.500,random= ~PROP.FOR.500|PATCH_ID/FREQ, data=points.info) #Random slple and intercept
 
 summary(model1)
+summary(model2) #Looks like the random intercept and slope model has a better AIC
 
 #Check assumptions of model
 #Normality of residuals
 #The residuals look normaly distributed
 library("car")
-qqPlot(model1$residuals)
+qqPlot(model2$residuals)
 
 #Homogeneity of variance
-plot(model1)
+plot(model2)
 
 #Make variable of transfromed data
-points.info$SQRT.PROP.FOR.500<-sqrt(points.info$PROP.FOR.500)
+points.info$SQRT.PROP.FOR.500<-sqrt(asin(points.info$PROP.FOR.500))
 points.info$LOG.diff<-log(points.info$diff+1)
 
 pairs(points.info[c("SQRT.PROP.FOR.500","LOG.diff")],upper.panel=panel.cor,diag.panel=panel.hist,panel=panel.smooth,main="Raw data")
 
 
-model2<-lme(log(diff+1)~sqrt(PROP.FOR.500),random= ~1|PATCH_ID/FREQ, data=points.info)
-#model2<-lme(PROP.FOR.30~PROP.FOR.500,random=~1|FREQ,data=points.info)
+model3<-lme(LOG.diff~SQRT.PROP.FOR.500,random= ~1|PATCH_ID/FREQ, data=points.info)
+model4<-lme(LOG.diff~SQRT.PROP.FOR.500,random= ~PROP.FOR.500|PATCH_ID/FREQ, data=points.info)
 
-summary(model2)
+
+summary(model3)
+summary(model4)
 
 par(mfrow=c(1,1))
 #Check assumptions of model
 #Normality of residuals
 #The residuals look normaly distributed
-qqPlot(model2$residuals)
+qqPlot(model4$residuals)
 
 #Homogeneity of variance
-plot(model2)
+plot(model4)
 ```
 
 
