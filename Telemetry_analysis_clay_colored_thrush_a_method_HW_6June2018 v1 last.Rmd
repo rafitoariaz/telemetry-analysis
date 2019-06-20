@@ -542,6 +542,7 @@ jpeg(paste("Graphs/ID home_range_raster_map_id",frequencies[i],".jpg",sep=""),wi
 forest.clip
 plot(forest.clip)
 lines(isopleths.birds[[i]][5,])
+scalebar(d=(extent(forest.clip)@xmax-extent(forest.clip)@xmin)/4,type="bar")
 
 dev.off()
 
@@ -680,7 +681,25 @@ metrics.or.rot %>%
   ylab("Difference between original and rotated home range")
 
 
+#Boxplot considering Landscape Probability index as the connectivity index
+metrics.or.rot %>% 
+  #dplyr::select(-PATCH_ID,-FREQ) %>% 
+  dplyr::mutate(PROP.FOR.DIFF=PROP.FOR.OR-PROP.FOR.ROT,
+         PATCH.SIZE.DIFF=PATCH.SIZE.OR-PATCH.SIZE.ROT,
+         CLASS.COINC.PROB.DIFF=CLASS.COINC.PROB.ORG-CLASS.COINC.PROB.ROT) %>% 
+  tidyr::gather(landscape.metric,value,PROP.FOR.DIFF:CLASS.COINC.PROB.DIFF) %>% 
+  dplyr::mutate(landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PROP","Proportion of forest",landscape.metric),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="PATC","Patch size",landscape.metric),
+         landscape.metric=if_else(substr(.$landscape.metric,1,4)=="CLAS","Connectivity",landscape.metric)) %>% 
+  mutate(landscape.metric=factor(landscape.metric,levels=c("Patch size","Proportion of forest","Connectivity"))) %>% 
+  ggplot(aes(x=landscape.metric,y=value)) +
+  geom_boxplot() +
+  facet_wrap(~landscape.metric,scales="free") +
+  xlab("Landscape metric") +
+  ylab("Difference (original - rotated home range)") +
+  geom_hline(yintercept=0,col="red",linetype="dashed")
 
+ggsave("Graphs/Home range original rotated 3 landscape metrics.jpg")
 
 ```
 
