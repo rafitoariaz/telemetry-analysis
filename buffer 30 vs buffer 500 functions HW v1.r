@@ -1,13 +1,13 @@
 prop.forest.30.500<-function(){
-# loop through every row in prueba and calculate prop.for30 and prop.for500
+  # loop through every row in prueba and calculate prop.for30 and prop.for500
 for (i in c(1:nrow(utm_formated))) {
   
   cen <- utm_formated[i,3:4]
   
   # Identify all cells that lie within buffer around site i:
-  Buffer.cells.30 <- extract(forest, cen, cellnumbers=TRUE, 
+  Buffer.cells.30 <- raster::extract(forest, cen, cellnumbers=TRUE, 
                           buffer=30)[[1]][,1]
-  Buffer.cells.500 <- extract(forest, cen, cellnumbers=TRUE, 
+  Buffer.cells.500 <- raster::extract(forest, cen, cellnumbers=TRUE, 
                              buffer=500)[[1]][,1]
 
   # Copy land cover map and delete all values outside of buffer:
