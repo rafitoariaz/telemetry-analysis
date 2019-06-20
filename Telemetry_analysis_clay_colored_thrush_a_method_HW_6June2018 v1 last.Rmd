@@ -332,6 +332,7 @@ areas<-merge(areas,prueba<-read.xlsx("Data bases/Information patches Costa Rica.
 #Know statistics about the data base
 #Mean home range size (dividing by 10,000 so that I can have the results in hectares)
 summary(areas$AREA/10000)
+sd(areas$AREA/10000)
 boxplot(areas$AREA)
 hist(areas$AREA/10000)
 
@@ -418,10 +419,21 @@ random_mod_2<-lme(log.AREA ~ log.prop.landscape2  + ELEVATION, random = ~1|PATCH
 
 #This is the best model, I will assess which variables I should retain
 summary(random_mod_2) #Proportion of forest was singificant
+
+
+r.squaredGLMM(lmer(log.AREA ~ log.prop.landscape2  + ELEVATION + (1|PATCH_ID), data = areas.scaled))
+
+#Graph variables that were singificant
 areas %>% 
   ggplot(aes(x=logprop.landscape2,y=AREA)) +
   geom_point() + 
   geom_smooth(method="lm")
+
+areas %>% 
+  ggplot(aes(x=logprop.landscape2,y=ELEVATION)) +
+  geom_point() + 
+  geom_smooth(method="lm")
+
 
 #Checking assumptions. Extracting the fitted and residual values
 residuals.mod<-resid(random_mod_2,type="normalized")
@@ -627,11 +639,9 @@ print(paste(i,"of",nrow(metrics.or.rot)))
 
 
 #Boxplot graphs ofe each landscape variable
-Make boxplot with difference between variables
-Do code for t test with transformed data to sqrt arcsin
-Do wilcoxon test
-Do wicloxon test excluding the tie values
 ```{r}
+
+#load("Telemetry analysis home range.RData")
 metrics.or.rot.original<-metrics.or.rot
 
 
