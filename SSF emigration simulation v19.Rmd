@@ -684,6 +684,49 @@ ggsave("Graphs/Results birds changed.jpg",width=60,height=60,units="in",limitsiz
 ```
 
 
+#Plot stacked bar graph of individuals that were changed in their patch for Switzerland presentation
+```{r}
+correct_order <- c('Small isolated', 'Small connected', 'Large connected')
+correct_order_original_patch <- c('SNF', 'N', 'SF')
+
+
+#Read file with seed faith according to bird id
+read.xlsx("Results emigration.xlsx",sheet="Res emigration moved animals") %>% 
+  select(focal.patch.original,focal.patch.new,time,prop.same.patch,prop.matrix,prop.new.patch) %>% 
+  filter(time==40) %>% 
+  mutate(time=if_else(time==40,"40 minutes",as.character(time)),
+         focal.patch.new=if_else(focal.patch.new==39,"Small isolated",as.character(focal.patch.new)),
+         focal.patch.new=if_else(focal.patch.new=="13","Small connected",focal.patch.new),
+         focal.patch.new=if_else(focal.patch.new=="1","Large connected",focal.patch.new),
+         focal.patch.original=if_else(focal.patch.original==39,"SNF",as.character(focal.patch.original)),
+         focal.patch.original=if_else(focal.patch.original=="13","N",focal.patch.original),
+         focal.patch.original=if_else(focal.patch.original=="1","SF",focal.patch.original)) %>%
+  gather(Fate,proportion,prop.same.patch,prop.matrix,prop.new.patch) %>% #Needed to make data base in a long format
+  mutate(Fate=if_else(Fate=="prop.matrix","Matrix",Fate),
+         Fate=if_else(Fate=="prop.new.patch","New patch",Fate),
+         Fate=if_else(Fate=="prop.same.patch","Same patch",Fate),
+         focal.patch.original = factor(focal.patch.original, levels = correct_order_original_patch)) %>% #Putting levels on factors so that they are in the order I want in the graph
+  mutate(focal.patch.new = factor(focal.patch.new, levels = correct_order)) %>%
+  ggplot(aes(x=focal.patch.original,y=proportion)) +
+  geom_col(aes(fill=Fate)) +
+  facet_wrap(~focal.patch.new) +
+  theme(axis.text.x=element_text(angle = 45, hjust = 1)) +
+  xlab("Habitat selection") +
+  ylab("Proportion of seeds") +
+  scale_fill_manual(values = c("#336600","#4C9900","#B2FF66")) +
+  #scale_fill_brewer(palette = "RdYlGn") +
+  theme_bw(base_size=150) + #Size of all letters in the plot big
+  theme(#legend.position="top",
+        legend.title=element_blank(), #Take out legend title
+        legend.justification = "center",
+        legend.key.size = unit(6, "cm")) #Width of the key colors in the legend
+
+ggsave("Graphs/Results birds changed Switzerland.jpg",width=70,height=25,units="in",limitsize = F)
+
+
+```
+
+
 #Immigration
 
 
@@ -849,6 +892,9 @@ raw.dataframe(for.immigration="Y",
                 name.output.dataframe=patches.immigration.dispersal.distance)  
 
 ```
+
+
+
 ```{r}
 library(ggplot2)
 patches.immigration.dispersal.distance %>% 
@@ -1274,10 +1320,54 @@ theme_light() +
 #ggsave("img/fig_all_animals.pdf", width = 24, height = 12, units = "cm")
 #ggsave("fig_all_animals_parameters_luis.pdf", width = 24, height = 12, units = "cm")
 ggsave("Graphs/Multi bird parameters.jpg")
+```
+
+#Plot version for Switzerland presentation
+```{r}
+d2$x <- 1:nrow(d2) 
+d2<-d2%>% 
+  filter(term!="Log step length by habitat") %>% 
+  filter(term!="Turning angle by habitat")
+data <- m2 %>% mutate(coef = map(fit, ~ broom::tidy(.x$model))) %>%
+select(id, coef) %>% unnest %>% 
+mutate(id = factor(id)) #filter(conf.low!=-Inf)  %>% #I added this line since there are -inf values on the data set 
+
+#Plot small version of the plot
+data %>% 
+  filter(term!="forest27_endforest:log_sl_") %>% 
+  filter(term!="forest27_endforest:ta_") %>%
+  mutate(term=if_else(term=="forest27_endforest","Habitat selection",term),
+         term=if_else(term=="log_sl_","Log step length",term),
+         term=if_else(term=="ta_","Turning angle",term),
+         term=if_else(term=="forest27_endforest:log_sl_","Log step length by habitat",term),
+         term=if_else(term=="forest27_endforest:ta_","Turning angle by habitat",term)) %>% 
+  mutate(term=factor(term,levels=c("Habitat selection","Log step length","Turning angle"))) %>% 
+  ggplot(., aes(x = term, y = estimate, group = id, col = id)) +
+# geom_rect(mapping = aes(xmin = x - .4, xmax = x + .4, ymin = ymin,
+# ymax = ymax, y = mean), data = d2 %>% mutate(x = as.numeric(x)), inherit.aes = FALSE,
+# fill = "grey90") +
+geom_pointrange(aes(ymin = conf.low, ymax = conf.high),
+position = position_dodge(width = 0.7), size = 0.8)  +
+  geom_errorbar(data = d2, aes(x = term, y = mean, ymin = mean, ymax = mean), inherit.aes = FALSE,
+size = 1) +
+geom_hline(yintercept = 0, lty = 2) +
+labs(x = "Parameters", y = "Relative Selection Strength") +
+theme_light() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.title.align=0.5) +
+  guides(color=guide_legend(ncol=2))
+    #+
+#scale_x_discrete(labels = c("Developed (open)", "Developed (other)", "Natural", "Crops","Other","Step length"))
+#p1
+#ggsave("img/fig_all_animals.pdf", width = 24, height = 12, units = "cm")
+#ggsave("fig_all_animals_parameters_luis.pdf", width = 24, height = 12, units = "cm")
+ggsave("Graphs/Multi bird 3 parameters.jpg")
+```
 
 
 
 #Plot big version of the plot
+```{r}
 data %>% 
   mutate(term=if_else(term=="forest27_endforest","Habitat selection",term),
          term=if_else(term=="log_sl_","Log step length",term),
@@ -1313,6 +1403,8 @@ data %>%
   geom_histogram(bins=3)
 
 ```
+
+
 #I COPIED THE CODE FROM ABOVE BUT I AM GOING TO ADD BIRDS TO MAKE THE PCA
 ```{r}
 #Create a data frame with id as the first column and the second column has a data frame inside it with the x,y and time (t)
