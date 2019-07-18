@@ -26,6 +26,8 @@ library("tlocoh") #Install using #http://tlocoh.r-forge.r-project.org/manual_ins
 #http://stackoverflow.com/questions/15248815/rgdal-package-installation for rgdal
 #You have also to install packages rgeos and pbapply
 #http://tlocoh.r-forge.r-project.org/manual_install.html step 5 at bottom of web page for tlocoh
+library("dplyr")
+library("tidyr")
 ```
 
 ## FORMAT DATA BASE FOR ANALYSIS
@@ -240,16 +242,19 @@ qqPlot(model2$residuals)
 
 #Homogeneity of variance
 plot(model2)
-
-#Make variable of transfromed data
-points.info$SQRT.PROP.FOR.500<-sqrt(asin(points.info$PROP.FOR.500))
-points.info$LOG.diff<-log(points.info$diff+1)
-
-pairs(points.info[c("SQRT.PROP.FOR.500","LOG.diff")],upper.panel=panel.cor,diag.panel=panel.hist,panel=panel.smooth,main="Raw data")
+```
 
 
-model3<-lme(LOG.diff~SQRT.PROP.FOR.500,random= ~1|PATCH_ID/FREQ, data=points.info)
-model4<-lme(LOG.diff~SQRT.PROP.FOR.500,random= ~PROP.FOR.500|PATCH_ID/FREQ, data=points.info)
+```{r}
+#Do the analysis with proportion of forest in 500 m buffer transformed
+#Transform proportion of forest
+points.info$asinsqrt.PROP.FOR.500<-asin(sqrt(points.info$PROP.FOR.500))
+
+pairs(points.info[c("asinsqrt.PROP.FOR.500","diff")],upper.panel=panel.cor,diag.panel=panel.hist,panel=panel.smooth,main="Raw data")
+
+
+model3<-lme(diff~asinsqrt.PROP.FOR.500,random= ~1|PATCH_ID/FREQ, data=points.info)
+model4<-lme(diff~asinsqrt.PROP.FOR.500,random= ~PROP.FOR.500|PATCH_ID/FREQ, data=points.info)
 
 
 summary(model3)
@@ -263,35 +268,40 @@ qqPlot(model4$residuals)
 
 #Homogeneity of variance
 plot(model4)
-
-#MODEL FOR PROP FORES IN 30 METERS BUFFER AS A RESPONSE VARIABLES
-summary(model5<-lme(PROP.FOR.30~PROP.FOR.500,random= ~1|PATCH_ID/FREQ, data=points.info)) #Random slope
-summary(model6<-lme(PROP.FOR.30~PROP.FOR.500,random= ~PROP.FOR.500|PATCH_ID/FREQ, data=points.info)) #Random slple and intercept
-
-points.info %>% 
-  ggplot(aes(x=PROP.FOR.500,y=PROP.FOR.30,color=FREQ)) +
-  geom_point() + 
-  #geom_jitter(position = position_jitter(width = 0.1, height = 0.1)) +
-  geom_smooth(method="lm",se=F) +
-    geom_abline(intercept=model6$coefficients$fixed[1], slope=model6$coefficients$fixed[2],size=1)
-
-plot(model6)
-
-summary(model7<-lme(sqrt(asin(PROP.FOR.30))~sqrt(asin(PROP.FOR.500)),random= ~1|PATCH_ID/FREQ, data=points.info)) #Random slope
-summary(model8<-lme(sqrt(asin(PROP.FOR.30))~sqrt(asin(PROP.FOR.500)),random= ~PROP.FOR.500|PATCH_ID/FREQ, data=points.info)) #Random slple and intercept
-
-points.info %>% 
-  ggplot(aes(x=sqrt(asin(PROP.FOR.500)),y=sqrt(asin(PROP.FOR.30)),color=FREQ)) +
-  geom_point() +
-  geom_smooth(method="lm",se=F)
-
-plot(model8)
 ```
+
+```{r}
+#Do the analysis with proportion of forest in 500 m buffer transformed and ratios between 30 and 500 m buffer
+#Obtain ratios
+points.info<-points.info %>% 
+  mutate(ratio.30.500.buffer=PROP.FOR.30/PROP.FOR.500) %>% 
+  drop_na()
+
+pairs(points.info[c("ratio.30.500.buffer","asinsqrt.PROP.FOR.500")],upper.panel=panel.cor,diag.panel=panel.hist,panel=panel.smooth,main="Raw data")
+
+
+model5<-lme(ratio.30.500.buffer~asinsqrt.PROP.FOR.500,random= ~1|PATCH_ID/FREQ, data=points.info)
+model6<-lme(ratio.30.500.buffer~asinsqrt.PROP.FOR.500,random= ~PROP.FOR.500|PATCH_ID/FREQ, data=points.info)
+
+
+summary(model5)
+summary(model6)
+
+par(mfrow=c(1,1))
+#Check assumptions of model
+#Normality of residuals
+#The residuals look normaly distributed
+qqPlot(model6$residuals)
+
+#Homogeneity of variance
+plot(model6)
+```
+
 
 
 ```{r}
 
-#Do plot with points for mean proportion of forest in used vs available
+#Do plot with points for difference in mean proportion of forest in used vs available
 #Generate mean proportion of forest per individual
 mean_prop_for_ind<-aggregate(points.info$diff,by=list(FREQ=points.info$FREQ),
                              FUN=mean)
@@ -348,11 +358,6 @@ mean_prop_for_av<-merge(mean_prop_for_av,se_prop_for_av,by="FREQ",all=F)
 mean_prop_for_ind<-merge(mean_prop_for_ind,mean_prop_for_av,by="FREQ",all=F)
 
 
-################################################
-#Merge databases of mean proportion of forest in used areas (30m buffer) with proportion of forest in 
-#buffer equal to the largest home range
-##########################################
-
 #Plot
 #plot(mean_prop_for_ind$log_prop.landscape,mean_prop_for_ind$mean_prop_for,xlab="Log proportion of forest inside 4.97 ha buffer",
 jpeg("Graphs/Used minus available individual GPS points.jpg",quality=100,width=1000,height=700)
@@ -373,28 +378,35 @@ dev.off()
 ```
 
 ```{r}
+#Do the analysis with the mean of each variable
 pairs(mean_prop_for_ind[c("mean_diff_prop_for_ind","mean_PROP.FOR.500_prop_av")],upper.panel=panel.cor,diag.panel=panel.hist,panel=panel.smooth,main="Raw data")
 
+#Convert Frequency to factor and transofrm proportion of forest in 500 m buffer using asin of sqrt
 mean_prop_for_ind<-mean_prop_for_ind %>% 
   mutate(FREQ=as.numeric(as.character(mean_prop_for_ind$FREQ))) %>% 
-  inner_join(freq_patches,by="FREQ")
+  inner_join(freq_patches,by="FREQ") %>% 
+  mutate(asinsqrt.mean_PROP.FOR.500_prop_av=asin(sqrt(mean_PROP.FOR.500_prop_av)))
+
+pairs(mean_prop_for_ind[c("mean_diff_prop_for_ind","asinsqrt.mean_PROP.FOR.500_prop_av")],upper.panel=panel.cor,diag.panel=panel.hist,panel=panel.smooth,main="Raw data")
 
 summary(mod.1<-lme(mean_diff_prop_for_ind~mean_PROP.FOR.500_prop_av,random= ~1|PATCH/FREQ, data=mean_prop_for_ind))
 
-plot(mod.1)
+plot(mod.1) #Model does not seem good
 
+#Plot
 mean_prop_for_ind %>% 
   ggplot(aes(x=mean_PROP.FOR.500_prop_av,y=mean_diff_prop_for_ind)) +
   geom_point() +
   geom_smooth(method="lm")
 ```
 ```{r}
-
+#Boxplot to see differences in 30 and 500 m buffer between animals
 points.info %>% 
   ggplot(aes(x=FREQ,y=diff)) + 
   geom_boxplot() +
   geom_hline(yintercept = 0,col="red")
 
+#Scatter plot to see differences in 30 and 500 m buffer between animals
 points.info %>% 
   ggplot(aes(x=PROP.FOR.500,y=PROP.FOR.30)) + 
   geom_point(aes(color=FREQ)) +
@@ -405,16 +417,19 @@ points.info %>%
 
 
 ```{r}
-
+#Create list for storing information for each bird analysis
 models.each.bird<-list()
 
+#Loop
 for(i in unique(points.info$FREQ)){
   
+  #Do model
   models.each.bird[[i]]<-points.info %>% 
   filter(FREQ==i) %>% 
-  lm(diff~PROP.FOR.500,data=.)
+  lm(diff~asinsqrt.PROP.FOR.500,data=.)
   print(i)
   
+  #Save graphs of assumptions
   jpeg(paste("Graphs/LM 30 500 buffer plots/LM bird id ",i,".jpg"),quality=100,width=1000,height=700)
   
 
@@ -423,60 +438,45 @@ for(i in unique(points.info$FREQ)){
   plot(models.each.bird[[i]])
   title(i,line=1)
   dev.off()
+  
+  #Print normality test
   print(shapiro.test(models.each.bird[[i]]$residuals))
 }
 
 #881, 511, 472 are the only models that have normal distribution of residuals
 
+#Print
 for(i in unique(points.info$FREQ)){
   
   print(models.each.bird[[i]]$coefficients)
   
 }
 
-
-intercept<-data.frame(FREQ=as.numeric(),intercept=as.numeric(),MEAN.PROP.FOR.500=as.numeric(),p.value=as.numeric(),significant=factor(levels=c("NO","YES")),upper=as.numeric(),lower=as.numeric())#,adj.r.squared=as.numeric())
+#Obtain the intercept value and its confidence interval
+models.coefficients<-data.frame(FREQ=as.numeric(),slope=as.numeric(),MEAN.PROP.FOR.500=as.numeric(),p.value=as.numeric(),significant=factor(levels=c("NO","YES")),upper=as.numeric(),lower=as.numeric())#,adj.r.squared=as.numeric())
 
 for(i in unique(points.info$FREQ)){
   
-  intercept[i,"FREQ"]<-i
-  intercept[i,"intercept"]<-models.each.bird[[i]]$coefficients[1]
-  intercept[i,"MEAN.PROP.FOR.500"]<-points.info %>% filter(FREQ==i) %>% summarise(mean(PROP.FOR.500))
-  intercept[i,"p.value"]<-summary(models.each.bird[[i]])$coefficients[1, 4]
-  intercept[i,"significant"]<-ifelse(intercept[i,"p.value"]>0.05,"NO","YES")
-  intercept[i,"upper"]<-intercept[i,"intercept"]+summary(models.each.bird[[i]])$coefficients[1, 2]
-  intercept[i,"lower"]<-intercept[i,"intercept"]-summary(models.each.bird[[i]])$coefficients[1, 2]
+  models.coefficients[i,"FREQ"]<-i
+  models.coefficients[i,"slope"]<-models.each.bird[[i]]$coefficients[2]
+  models.coefficients[i,"MEAN.PROP.FOR.500"]<-points.info %>% filter(FREQ==i) %>% summarise(mean(PROP.FOR.500))
+  models.coefficients[i,"p.value"]<-summary(models.each.bird[[i]])$coefficients[1, 4]
+  models.coefficients[i,"significant"]<-ifelse(models.coefficients[i,"p.value"]>0.05,"NO","YES")
+  models.coefficients[i,"upper"]<-models.coefficients[i,"slope"]+summary(models.each.bird[[i]])$coefficients[1, 2]
+  models.coefficients[i,"lower"]<-models.coefficients[i,"slope"]-summary(models.each.bird[[i]])$coefficients[1, 2]
   #intercept[i,"adj.r.squared"]<-models.each.bird[[i]]$adj.r.squared
   
 }
 
-intercept %>% 
+#Graph intercept value (y) according to proporiton of forest in 500 m buffer
+models.coefficients %>% 
   filter(p.value!=1) %>% 
-  ggplot(aes(x=MEAN.PROP.FOR.500,y=intercept),group=significant,color=significant) + 
+  ggplot(aes(x=MEAN.PROP.FOR.500,y=slope),group=significant,color=significant) + 
   geom_point(aes(color=significant),size=4) +
   geom_hline(yintercept=0,col="red") +
   geom_errorbar(aes(ymin=lower, ymax=upper),position=position_dodge(0.05))
 
-intercept %>% 
-  filter(FREQ!=591) %>% 
-  filter(FREQ!=672) %>% 
-  filter(FREQ!=821) %>% 
-  filter(FREQ!=910) %>%
-  #filter(p.value!=1) %>% 
-  ggplot(aes(x=MEAN.PROP.FOR.500,y=intercept),group=significant,color=significant) + 
-  geom_point(aes(color=significant),size=4) +
-  geom_hline(yintercept=0,col="red") +
-  geom_errorbar(aes(ymin=lower, ymax=upper),position=position_dodge(0.05))
-
-intercept %>% 
-  filter(FREQ==591 | FREQ==672 | FREQ==821 | FREQ==910) %>%
-  #filter(p.value!=1) %>% 
-  ggplot(aes(x=MEAN.PROP.FOR.500,y=intercept),group=significant,color=significant) + 
-  geom_point(aes(color=significant),size=4) +
-  geom_hline(yintercept=0,col="red") +
-  geom_errorbar(aes(ymin=lower, ymax=upper),position=position_dodge(0.05))
-
-
+#These frequencies gave perfect fit. See why
 points.info %>% 
   filter(FREQ==591 | FREQ==672 | FREQ==821 | FREQ==910) %>% 
   ggplot(aes(x=PROP.FOR.500,y=diff)) +
@@ -485,7 +485,7 @@ points.info %>%
   facet_wrap(~FREQ) +
   geom_hline(yintercept=0,col="red")
 
-
+#The porportion of forest in used and availables areas was the same (0 or 1)
 points.info %>% 
   filter(FREQ==591 | FREQ==672 | FREQ==821 | FREQ==910) %>% 
   ggplot(aes(x=PROP.FOR.500,y=PROP.FOR.30)) +
@@ -494,26 +494,12 @@ points.info %>%
   facet_wrap(~FREQ) +
   geom_hline(yintercept=0,col="red")
 
+#Test if the intercept of all the individuals differs from 0
+hist(models.coefficients$slope)
 
-hist(intercept$intercept)
+t.test(x=models.coefficients$slope,mu=0,alternative="two.sided")
 
-t.test(x=intercept,mu=0,alternative="two.sided")
-
-qqPlot(intercept$intercept)
-shapiro.test(intercept$intercept)
-
-
-
-slope<-data.frame(slope=as.numeric())
-
-for(i in unique(points.info$FREQ)){
-  
-  slope[i,1]<-models.each.bird[[i]]$coefficients[2]
-  
-}
-hist(slope$slope)
-
-
-
+qqPlot(models.coefficients$slope)
+shapiro.test(models.coefficients$slope)
 
 ```
