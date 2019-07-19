@@ -372,14 +372,20 @@ panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
 ```
 
 ```{r}
+#Areas in hectares
+areas$AREA<-areas$AREA/10000
+
 pairs(areas[c("AREA","a","n_points","prop.landscape2","mean.patch.area2","ELEVATION")],upper.panel=panel.smooth,diag.panel=panel.hist,panel=panel.cor,main="Raw data")
+
+#qqplot of variables
+qqPlot(areas$prop.landscape2)
+qqPlot(areas$ELEVATION)
 
 #Make plot with home range area log transformed
 areas$logAREA<-log(areas$AREA)
-areas$logprop.landscape2<-log(areas$prop.landscape2)
 areas$logmean.patch.area2<-log(areas$mean.patch.area2)
 
-pairs(areas[c("logAREA","a","n_points","logprop.landscape2","logmean.patch.area2","ELEVATION")],upper.panel=panel.smooth,diag.panel=panel.hist,panel=panel.cor,main="Log of area, proportion of forest and patch size")
+pairs(areas[c("logAREA","a","n_points","prop.landscape2","logmean.patch.area2","ELEVATION")],upper.panel=panel.smooth,diag.panel=panel.hist,panel=panel.cor,main="Log of area, proportion of forest and patch size")
 
 ```
 
@@ -391,22 +397,21 @@ library("nlme")
 areas$PATCH_ID<-as.factor(areas$PATCH_ID)
 #areas$FREQ<-as.factor(areas$FREQ)
 library("usdm")
-vif(data.frame(areas$AREA,areas$prop.landscape2,areas$mean.patch.area2,areas$ELEVATION))
+vif(data.frame(areas$logAREA,areas$asinsqrt.prop.landscape2,areas$logmean.patch.area2,areas$ELEVATION))
 
 
 #Model with random intercept. You have to use ML instead of REML to be able to compare AIC. I am using the logarithm in some variables so that they are normally distributed
 #Create a data frame with scaled variables
 areas.scaled<- areas %>%
-  mutate(log.AREA=log(AREA),
+  mutate(log.AREA=log(AREA/10000),
          log.mean.patch.area2=scale(log(mean.patch.area2)),
-         log.prop.landscape2=scale(log(prop.landscape2)),
          ELEVATION=scale(ELEVATION))
 
 #Full model
-summary(random_mod_1<-lme(log.AREA ~ log.prop.landscape2 + log.mean.patch.area2 + ELEVATION, random = ~1|PATCH_ID,method = "ML", data = areas.scaled))
+summary(random_mod_1<-lme(log.AREA ~ prop.landscape2 + log.mean.patch.area2 + ELEVATION, random = ~1|PATCH_ID,method = "ML", data = areas.scaled))
 
 #Without mean patch area
-summary(random_mod_2<-lme(log.AREA ~ log.prop.landscape2  + ELEVATION, random = ~1|PATCH_ID,method = "ML", data = areas.scaled))
+summary(random_mod_2<-lme(log.AREA ~ prop.landscape2  + ELEVATION, random = ~1|PATCH_ID,method = "ML", data = areas.scaled))
 
 
 #Select best random factor model using AIC
@@ -415,22 +420,22 @@ library("MuMIn")
 round(Weights(models.aic),digits=2) #Best model #2. 
 
 #Run the best model with REML
-random_mod_2<-lme(log.AREA ~ log.prop.landscape2  + ELEVATION, random = ~1|PATCH_ID,method = "REML", data = areas.scaled)
+random_mod_2<-lme(log.AREA ~ prop.landscape2  + ELEVATION, random = ~1|PATCH_ID,method = "REML", data = areas.scaled)
 
 #This is the best model, I will assess which variables I should retain
 summary(random_mod_2) #Proportion of forest was singificant
 
-
-r.squaredGLMM(lmer(log.AREA ~ log.prop.landscape2  + ELEVATION + (1|PATCH_ID), data = areas.scaled))
+#Obtain r squared of model
+r.squaredGLMM(lmer(log.AREA ~ prop.landscape2  + ELEVATION + (1|PATCH_ID), data = areas.scaled))
 
 #Graph variables that were singificant
 areas %>% 
-  ggplot(aes(x=logprop.landscape2,y=AREA)) +
+  ggplot(aes(x=prop.landscape2,y=logAREA)) +
   geom_point() + 
   geom_smooth(method="lm")
 
 areas %>% 
-  ggplot(aes(x=logprop.landscape2,y=ELEVATION)) +
+  ggplot(aes(x=prop.landscape2,y=ELEVATION)) +
   geom_point() + 
   geom_smooth(method="lm")
 
@@ -441,12 +446,11 @@ fitted.mod<-fitted(random_mod_2)
 
 #Plot
 plot(fitted.mod,residuals.mod)
-plot(areas.scaled$log.prop.landscape2,residuals.mod)
+plot(areas.scaled$prop.landscape2,residuals.mod)
 plot(areas.scaled$ELEVATION,residuals.mod)
 
 #The residuals look normaly distributed
-qqnorm(random_mod_2$residuals)
-abline(0,1)
+qqPlot(random_mod_2$residuals)
 
 #Checking homogeneity of variance. SEEMS VERY GOOD
 plot(random_mod_2)
@@ -454,13 +458,22 @@ plot(random_mod_2)
 ```
 
 ```{r}
+#Run the best model with REML and hectares
+summary(random_mod_2<-lme(logAREA ~ prop.landscape2  + ELEVATION, random = ~1|PATCH_ID,method = "REML", data = areas))
+
+#MAKE PREDICITION. I DID IT MANUALLY BUT DID NOT INCLUDE TERMS FOR RANDOM FACTOR
+areas<-areas %>% 
+  mutate(prediction=random_mod_2$coefficients$fixed[1] + prop.landscape2*random_mod_2$coefficients$fixed[2] + ELEVATION*random_mod_2$coefficients$fixed[3])
+
 #Plot predicted values
 jpeg("Graphs/Home range size vs prop forest.jpg",quality=100,width=1000,height=700)
 par(mar=c(5,6,2,2),mfrow = c(1, 1))
-plot(log(areas$prop.landscape2),log(areas$AREA), xlab="Log proportion of forest",ylab="Home range size (log ha)",cex.axis=3,cex.lab=3,pch=16,cex=3)
+plot(areas$prop.landscape2,areas$logAREA, xlab="Proportion of forest",ylab="Home range size (log ha)",cex.axis=3,cex.lab=3,pch=16,cex=3)
 par(new=T)
 #Plot regression line
-abline(random_mod_2$coefficients$fixed[1:2],col="red",lwd=3)
+areas<-areas[order(-areas$prediction),]
+plot(areas[c(1,nrow(areas)),"prediction"],col="red",lwd=3,type="l",axes=F,xlab="",ylab="") #I SELECTED THE FIRST AND LAST OBSERVATION TO MAKE THIS LINE BECAUSE THE PREDICTIONS WERE NOT IN A STRAIGHT LINE. I DO NOT THINK THIS IS THE WAY TO DO IT SINCE I AM NOT INCLUDING THE RANDOM FACTOR IN THE PREDICTIONS
+#plot(areas$prediction,col="red",lwd=3,type="l")
 
 dev.off()
 ```
