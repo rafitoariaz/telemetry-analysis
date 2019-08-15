@@ -3,6 +3,7 @@
 #focal.patch: the patches where the simulations will be made
 #focal.patch.immigration: this is the focal patch that indicates te patch where the seed should land to be considered an immigrated seed 
 #fix.rate: the time at which each point will be considered
+#parameters.simulations: name of the data frame that will have the parameters for each simulation
 #num.sim.points.per.patch: number of simulations that will be made starting from each focal patch
 #num.sim.per.point: number of simulations that will be made per starting point
 #map.full: full map with vegetation cover
@@ -15,6 +16,7 @@ simulate.movement<-function(focal.patch=NA,
                             focal.patch.immigration=NA,
                             tot.num.minutes=NA,
                             fix.rate=NA,
+                            parameters.simulations=NA,
                             num.sim.points.per.patch=NA,
                             num.sim.per.point=NA,
                             map.full=NA,
@@ -31,7 +33,10 @@ simulate.movement<-function(focal.patch=NA,
   
   #Create a data frame with the information needed from the output
   one.sim <<-data.frame(focal.patch=0,
-                       bird.id=rep(x=1,each=tot.num.steps+1), #bird id
+                       bird.id=rep(x=1,each=tot.num.steps+1), #bird id. ##***I do not know if this is useful
+                       param.shape.step.length=0,
+                       param.scale.step.length=0,
+                       param.habitat.utilization=0,
                        time=rep(seq(from=0,to=tot.num.minutes,by=fix.rate)), #How many minutes have passed since the bird started to move?
                        x=0, #x coordinate
                        y=0, #y coordinate
@@ -40,6 +45,22 @@ simulate.movement<-function(focal.patch=NA,
                        same.patch=0,
                        matrix=0,
                        new.patch=0) #value of the raster (type of vegetation)
+  
+  
+  one.sim$param.shape.step.length=parameters.simulations$shape.step.length[[i]]
+  one.sim$param.scale.step.length=parameters.simulations$shape.scale.length[[i]]
+  one.sim$param.habitat.utilization=parameters.simulations$habitat.utilization[[i]]
+  
+  
+  #Store movment kernel
+  movement.kernel <- movement_kernel(parameters.simulations$scale.step.length[[i]],
+                                     parameters.simulations$shape.step.length[[i]], 
+                                     map.cropped)
+  
+  #Store habitat kernel
+  habitat.kernel <- habitat_kernel(list(forest27 = parameters.simulations$habitat.utilization[[i]]),
+                                   map.cropped)
+  
   
 #for (z in focal.patch){
 for (z in 1:length(focal.patch)){
@@ -107,11 +128,11 @@ for (z in 1:length(focal.patch)){
         if (k==2){
           system.time(for(i in 1:1e3) 
             tud <- tud +
-              simulate_ud(mk, hk,initial.starting.point,n= tot.num.steps)) 
+              simulate_ud(movement.kernel,habitat.kernel,initial.starting.point,n= tot.num.steps)) 
         }else{
           system.time(for(i in 1:1e3) 
             tud <- tud +
-              simulate_ud(mk, hk,starting.point,n= tot.num.steps)) 
+              simulate_ud(movement.kernel,habitat.kernel,starting.point,n= tot.num.steps)) 
         }
         
         #Since we did x simulations (in this case 5000) and the probability of each simulation summed to 1, all the cells now sum 5000. We have no normilize the information
@@ -173,6 +194,9 @@ for (z in 1:length(focal.patch)){
         
         match(z,focal.patch)
         
+       
+        #return(name.output.dataframe)
+        
         #Give the name of the data frame to the name that I stated on the function
         assign(deparse(substitute(name.output.dataframe)),
                time.location.regurgitation, envir=.GlobalEnv)
@@ -187,6 +211,8 @@ for (z in 1:length(focal.patch)){
         print(paste("Step",k-1,"of",tot.num.steps,"steps"))
       }}}}
   
+  
+
   
 }
 
