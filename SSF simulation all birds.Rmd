@@ -35,6 +35,8 @@ library("ggplot2")
 library("ggrepel")
 library("GGally")
 library("parallel")
+library("doParallel")
+library("foreach")
 ```
 
 #Prepare GPS data
@@ -467,19 +469,16 @@ Run replicate simulations:
 
 source("SSF simulation functions all birds.R")
 
-num.sim.points.per.patch<-3
+num.sim.points.per.patch<-2
 num.sim.per.point<-1
-
 
 results.simulations <- split(condensed.dataframe.subset$id,condensed.dataframe.subset$id)
 
-#for (i in 1:nrow(parameters.simulations)){
-for (i in c(1,2)){
 
-  
 
+for (i in 1:2){
 simulate.movement(focal.patch=focal.patch.database[[i]]$focal.patch.label,
-                  tot.num.minutes=30,
+                  tot.num.minutes=20,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
@@ -489,10 +488,120 @@ simulate.movement(focal.patch=focal.patch.database[[i]]$focal.patch.label,
                   map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
                   name.output.dataframe=raw.results.emigration)
   
+    results.simulations[[i]] <<- raw.results.emigration
+    
+}
+
+results.simulations <- split(condensed.dataframe.subset$id,condensed.dataframe.subset$id)
+
+registerDoParallel(detectCores())
+
+
+  
+
+
+for (i in 1:2){
+#results.simulations <- foreach (i=c(4,8), .packages=c("amt","raster")) %dopar% {
+
+simulate.movement(focal.patch=focal.patch.database[[i]]$focal.patch.label,
+                  tot.num.minutes=10,
+                  fix.rate=5,
+                  parameters.simulations=parameters.simulations,
+                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  map.full=land_use_raster,
+                  map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
+                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
+                  name.output.list=raw.results.emigration)
+
   results.simulations[[i]] <- raw.results.emigration
   
+}
+
+
+#for (i in 1:nrow(parameters.simulations)){
+results.simulations.2 <- foreach (Patch=focal.patch.database[c(1,2,4)],
+                               .packages=c("amt","raster")) %dopar% {
+simulate.movement(focal.patch=Patch$focal.patch.label,
+                  tot.num.minutes=10,
+                  fix.rate=5,
+                  parameters.simulations=parameters.simulations,
+                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  map.full=land_use_raster,
+                  map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
+                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
+                  name.output.list=raw.results.emigration)
+  #raw.results.emigration
   
 }
+
+## THIS WORKED:
+
+#for (i in 1:nrow(parameters.simulations)){
+results.simulations.2 <- foreach (Patch=focal.patch.database[c(1,2)],
+                               .packages=c("amt","raster")) %dopar% {
+a = as.character(Patch$id.freq)
+i <- which(names(forest.raster.cropped) ==a)
+
+#cat(c(a, i), file=stdout())
+simulate.movement(focal.patch=Patch$focal.patch.label,
+                  tot.num.minutes=10,
+                  fix.rate=5,
+                  parameters.simulations=parameters.simulations,
+                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  map.full=land_use_raster,
+                  map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
+                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
+                  name.output.list=raw.results.emigration)
+}
+
+
+## THIS WORKED ALSO:
+
+#for (i in 1:nrow(parameters.simulations)){
+results.simulations <- foreach (i=1:2,
+                                .packages=c("amt","raster")) %dopar% {
+
+simulate.movement(focal.patch=focal.patch.database[[i]]$focal.patch.label,
+                  tot.num.minutes=20,
+                  fix.rate=5,
+                  parameters.simulations=parameters.simulations,
+                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  map.full=land_use_raster,
+                  map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
+                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
+                  name.output.list=raw.results.emigration)
+
+
+  
+}
+
+
+#for (i in 1:nrow(parameters.simulations)){
+foreach (i=1,.packages=c("amt","raster"),.combine="output.results.simulations.function",.init=i,.multicombine=TRUE) %dopar% {
+
+simulate.movement(focal.patch=focal.patch.database[[i]]$focal.patch.label,
+                  tot.num.minutes=20,
+                  fix.rate=5,
+                  parameters.simulations=parameters.simulations,
+                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  map.full=land_use_raster,
+                  map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
+                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
+                  name.output.dataframe=raw.results.emigration)
+
+  
+  #results.simulations[[i]] <<- raw.results.emigration
+  
+}
+  
+
+
+stopImplicitCluster()
 ```
 
 

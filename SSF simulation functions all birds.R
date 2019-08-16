@@ -9,7 +9,7 @@
 #map.full: full map with vegetation cover
 #map.cropped: vegetation map cropped to the area where the simulation is going to be made
 #map.cropped.labeled: same as map.cropped but instead of having vegetation cover id it has patch id for each forest patch
-#name.output.dataframe: the name of the data base generated 
+#name.output.list: the name of the list generated 
 
 
 simulate.movement<-function(focal.patch=NA,
@@ -22,7 +22,7 @@ simulate.movement<-function(focal.patch=NA,
                             map.full=NA,
                             map.cropped=NA,
                             map.cropped.labeled=NA,
-                            name.output.dataframe=NA){
+                            name.output.list=NA){
   
   time.location.regurgitation<<-as.list(focal.patch)
   names(time.location.regurgitation)<<-focal.patch #For now the names are in a character format
@@ -195,12 +195,11 @@ for (z in 1:length(focal.patch)){
         match(z,focal.patch)
         
        
-        #return(name.output.dataframe)
+       
         
         #Give the name of the data frame to the name that I stated on the function
-        assign(deparse(substitute(name.output.dataframe)),
-               time.location.regurgitation, envir=.GlobalEnv)
-        
+        assign(deparse(substitute(name.output.list)),time.location.regurgitation, envir=.GlobalEnv)
+  
         
         #Print information
         #print(paste((sum(1:z)*g*l*k),"th simulation of",length(focal.patch)*length(num.sim.points.per.patch)*length(num.sim.per.point)*length(tot.num.steps),"simulations"))
@@ -212,7 +211,7 @@ for (z in 1:length(focal.patch)){
       }}}}
   
   
-
+   time.location.regurgitation
   
 }
 
