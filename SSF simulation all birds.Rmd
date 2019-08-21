@@ -37,7 +37,15 @@ library("GGally")
 library("parallel")
 library("doParallel")
 library("foreach")
+library("knitr")
 ```
+
+```{r}
+#Convert the Rmd file to R file so that it can be read on the super computer
+#purl("SSF simulation all birds.Rmd",output="SSF simulation all birds R file.R")
+
+```
+
 
 #Prepare GPS data
 
@@ -262,24 +270,23 @@ tracking.database.unlisted %>%
 
 library("nlme")
 #Model without random structure
-mod.1<-gls(log_sl_ ~logpatch_size+percent_forest+elevation,method = "REML", data = d)
-summary(mod.1)
+summary(mod.1<-gls(log_sl_ ~logpatch_size+percent_forest+elevation,method = "REML", data = tracking.database.unlisted))
 
 
 #GLMM nesting frequency
-mod.2<-lme(log_sl_~logpatch_size+percent_forest+elevation,random = ~1 | FREQ,data=d,method="REML")
-summary(mod.2)
+#mod.2<-lme(log_sl_~logpatch_size+percent_forest+elevation,random = ~1 | FREQ,data=d,method="REML")
+#summary(mod.2)
 
 #without patch size
-mod.3<-lme(log_sl_~percent_forest+elevation,random = ~1 | FREQ,data=d,method="REML")
-summary(mod.3)
+#mod.3<-lme(log_sl_~percent_forest+elevation,random = ~1 | FREQ,data=d,method="REML")
+#summary(mod.3)
 
 #Without percent of forest
-mod.4<-lme(log_sl_~elevation,random = ~1 | FREQ,data=d,method="REML")
-summary(mod.4)
+#mod.4<-lme(log_sl_~elevation,random = ~1 | FREQ,data=d,method="REML")
+#summary(mod.4)
 
-library("MuMIn")
-Weights(AIC(mod.1,mod.2,mod.3,mod.4))
+#library("MuMIn")
+#Weights(AIC(mod.1,mod.2,mod.3,mod.4))
 
 tracking.database.unlisted %>% 
   ggplot(aes(x=elevation,y=log_sl_)) +
@@ -296,7 +303,11 @@ tracking.database.unlisted %>%
 
 condensed.dataframe.subset <- condensed.dataframe.subset %>% 
   mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + ta_  + log_sl_:forest27_end + ta_:forest27_end + strata(step_id_))))
+```
 
+
+```{r}
+#MAKE DATA BASES FOR ANALYSIS
 
 #Make a data base with the values of each parameter. 
 parameters.simulations <- data.frame(num.simulation=condensed.dataframe.subset$id) #*** IN THIS LINE I WOULD PUT THE NUMBER OF SIMULATIONS I WOULD LIKE TO DO, BUT NO I AM PUTTING THE ID OF THE BIRD SINCE EACH ONE HAS A SPECIFIC PARAMTER
@@ -323,7 +334,7 @@ for (i in 1:nrow(condensed.dataframe.subset)) {
 #Make a list with the forest raster cropped to the extent of the animal that moved
 structure <- list(id.freq=numeric(),forest.raster.cropped=list())
 
-#Make a splitted list with the id. freq
+#Make a splitted list with the id. freq. ***HERE I COULD USE THE LAND_USE_RASTER (THIS IS, THE COMPLETE MAP OF THE LANDSCAPE BUT LABALED) TO DO THE LIST SO THAT I HAVE REPRESENTED EACH PATCH OF THE LANDSCAPE. aLTERNATIVELY, FOR MY THESIS I CAN LOCATE THE PATCH IN THE LAND_USE_RASTER BASED ON THE PATCHES.LOCATION OBJECT (WHICH HAS THE XY COORDINATES OF THE PATCH WHERE THE BIRD WAS CAPTURED, SEE BELOW) TO SELECT ONLY THOSE PATCHES AND DO THE SIMULATIONS ONLY IN THOSE PATCHES
 forest.raster.cropped<-split(condensed.dataframe.subset$id,condensed.dataframe.subset$id)
 
 #Construct the list with the elements
@@ -332,10 +343,10 @@ for (i in 1:length(forest.raster.cropped)){
   #Copy the structure of the list I want
   forest.raster.cropped[[i]] <- structure
   
-  #Put the id. freq
-  forest.raster.cropped[[i]]$id.freq <- condensed.dataframe.subset$id[[i]] #***HERE INSTEAD OF PUTTING THIS ID FREQUENCY I WOULD PUT THE PATCH CHARACTERISTICS
+  #Put the id. freq. ***HERE I WOULD PUT THE PATCH ID. I THINK I AM PUTTING THE ID.FREQ BECAUSE IT IS BASED ON WHERE THE BIRD MOVED, 
+  forest.raster.cropped[[i]]$id.freq <- condensed.dataframe.subset$id[[i]] 
   
-  #Crop the map to the area in which the animal moved. #****HERE I WOULD PUT ANY CROPPED MAP
+  #Crop the map to the area in which the animal moved. #****HERE I COULD CROP THE MAP BASED ON THE LOCATION OF THE PATCH WHERE THE BIRD MOVED
   forest.raster.cropped[[i]]$forest.raster.cropped <- crop(land_use_raster, amt::bbox(condensed.dataframe.subset$trk[[i]], spatial = TRUE, buff = 1e3))
   
   #Store movment kernel
@@ -344,7 +355,7 @@ for (i in 1:length(forest.raster.cropped)){
   #Store habitat kernel
   #forest.raster.cropped[[i]]$habitat.kernel <- habitat_kernel(list(forest27 = parameters.simulations$habitat.kernel[[i]]), forest.raster.cropped[[i]]$forest.raster.cropped)
   
-  #Sotre forest raster labaled. #****HERE I WOULD PUT ANY CROPPED MAP
+  #Sotre forest raster labaled. #****HERE I WOULD PUT ANY CROPPED MAP BUT LABELED
   forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-ConnCompLabel(forest.raster.cropped[[i]]$forest.raster.cropped)
   
 }
@@ -374,7 +385,11 @@ rm(patches.locations)
 structure <- list(id.freq=numeric(),focal.patch=list())
 
 #Make a splitted list with the id. freq
-results.simulations <- focal.patch.database<-split(condensed.dataframe.subset$id,condensed.dataframe.subset$id)
+focal.patch.database<-data.frame(id=condensed.dataframe.subset$id)
+
+focal.patch.database$id <- factor(focal.patch.database$id,levels=unique(focal.patch.database$id))
+
+focal.patch.database <- split(focal.patch.database$id,focal.patch.database$id)
 
 
 #I will obtain the cell number form the coordinate of the patch where the bird was captured
@@ -392,6 +407,26 @@ for (i in 1:length(focal.patch.database)){
   focal.patch.database[[i]]$focal.patch.label <- forest.raster.cropped[[i]]$forest.raster.cropped.labeled [cellFromXY (forest.raster.cropped[[i]]$forest.raster.cropped.labeled, focal.patch.database[[i]]$focal.patch.xy)]
   
 }
+
+
+#JUST ADDED THIS LINE. I THINK IT WOULD BE EASIER IF I PUT ON MY DATA BASE OF THE RASTER THE INFORMATION OF THE FOCAL PATCH LABEL ID
+
+land_use_raster_labeled<-ConnCompLabel(land_use_raster)
+
+for (i in 1:length(forest.raster.cropped)){
+  
+  #Obtain the x y values of the focal patch. ###HERE I AM USING THE INFORMATION FROM ADAM FROM THE COORDINATES WHERE THE BIRDS WHERE CAPTURED, BUT I CAN USE ANY XY COORDINATE WHERE I WANT TO DO THE SIMULATION AND THEN OBTAIN THE INFORMATION OF THE CELL NUMBER FOR THE COMPLETE MAP OR THE CROPPED MAP (NEXT LINES)
+  forest.raster.cropped[[i]]$focal.patch.xy <- subset(frequencies.patches,frequencies.patches$FREQ==forest.raster.cropped[[i]]$id.freq)[,c("X","Y")]
+  
+  #Obtain the cell number from the xy cordinate from the complete raster map
+  forest.raster.cropped[[i]]$focal.patch.label.complete.map <- land_use_raster_labeled[cellFromXY (land_use_raster_labeled, focal.patch.database[[i]]$focal.patch.xy)]
+  
+  #Obtain the cell number from the xy cordinate from the cropped raster map. ***I HAVE THE CORRECT VALUES OF THE RASTERS, I ONLY NEED TO MODIFY THE CODE SO THAT IT WORKS WITH THIS MODIFICATION
+  forest.raster.cropped[[i]]$focal.patch.label.cropped <- ConnCompLabel(forest.raster.cropped[[i]]$forest.raster.cropped)[cellFromXY (ConnCompLabel(forest.raster.cropped[[i]]$forest.raster.cropped), focal.patch.database[[i]]$focal.patch.xy)]
+  
+  
+}
+
 
 rm(structure)
 ```
@@ -466,106 +501,27 @@ data %>%
 Run replicate simulations:
 
 ```{r}
-
+#Soruce simulation functions
 source("SSF simulation functions all birds.R")
 
+#Set up the number of simulations per patch and also number of simulations per starting point
 num.sim.points.per.patch<-2
 num.sim.per.point<-1
 
-results.simulations <- split(condensed.dataframe.subset$id,condensed.dataframe.subset$id)
-
-
-
-for (i in 1:2){
-simulate.movement(focal.patch=focal.patch.database[[i]]$focal.patch.label,
-                  tot.num.minutes=20,
-                  fix.rate=5,
-                  parameters.simulations=parameters.simulations,
-                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  map.full=land_use_raster,
-                  map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
-                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
-                  name.output.dataframe=raw.results.emigration)
-  
-    results.simulations[[i]] <<- raw.results.emigration
-    
-}
-
-results.simulations <- split(condensed.dataframe.subset$id,condensed.dataframe.subset$id)
+#Make a list of the
+results.simulations <- split(parameters.simulations$num.simulation,parameters.simulations$num.simulation)
 
 registerDoParallel(detectCores())
+#registerDoParallel(10)
 
-
-  
-
-
-for (i in 1:2){
-#results.simulations <- foreach (i=c(4,8), .packages=c("amt","raster")) %dopar% {
-
-simulate.movement(focal.patch=focal.patch.database[[i]]$focal.patch.label,
-                  tot.num.minutes=10,
-                  fix.rate=5,
-                  parameters.simulations=parameters.simulations,
-                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  map.full=land_use_raster,
-                  map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
-                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
-                  name.output.list=raw.results.emigration)
-
-  results.simulations[[i]] <- raw.results.emigration
-  
-}
-
-
+#1,2,4,8,13,15,17,18
 #for (i in 1:nrow(parameters.simulations)){
-results.simulations.2 <- foreach (Patch=focal.patch.database[c(1,2,4)],
-                               .packages=c("amt","raster")) %dopar% {
-simulate.movement(focal.patch=Patch$focal.patch.label,
-                  tot.num.minutes=10,
-                  fix.rate=5,
-                  parameters.simulations=parameters.simulations,
-                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  map.full=land_use_raster,
-                  map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
-                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
-                  name.output.list=raw.results.emigration)
-  #raw.results.emigration
-  
-}
-
-## THIS WORKED:
-
-#for (i in 1:nrow(parameters.simulations)){
-results.simulations.2 <- foreach (Patch=focal.patch.database[c(1,2)],
-                               .packages=c("amt","raster")) %dopar% {
-a = as.character(Patch$id.freq)
-i <- which(names(forest.raster.cropped) ==a)
-
-#cat(c(a, i), file=stdout())
-simulate.movement(focal.patch=Patch$focal.patch.label,
-                  tot.num.minutes=10,
-                  fix.rate=5,
-                  parameters.simulations=parameters.simulations,
-                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  map.full=land_use_raster,
-                  map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
-                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
-                  name.output.list=raw.results.emigration)
-}
-
-
-## THIS WORKED ALSO:
-
-#for (i in 1:nrow(parameters.simulations)){
-results.simulations <- foreach (i=1:2,
+system.time(
+  results.simulations2 <- foreach (i=c(1,2,4,9,11,13,14),#c(1,4),
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=focal.patch.database[[i]]$focal.patch.label,
-                  tot.num.minutes=20,
+                  tot.num.minutes=10,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
@@ -578,30 +534,12 @@ simulate.movement(focal.patch=focal.patch.database[[i]]$focal.patch.label,
 
   
 }
-
-
-#for (i in 1:nrow(parameters.simulations)){
-foreach (i=1,.packages=c("amt","raster"),.combine="output.results.simulations.function",.init=i,.multicombine=TRUE) %dopar% {
-
-simulate.movement(focal.patch=focal.patch.database[[i]]$focal.patch.label,
-                  tot.num.minutes=20,
-                  fix.rate=5,
-                  parameters.simulations=parameters.simulations,
-                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  map.full=land_use_raster,
-                  map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
-                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
-                  name.output.dataframe=raw.results.emigration)
-
-  
-  #results.simulations[[i]] <<- raw.results.emigration
-  
-}
-  
+)
 
 
 stopImplicitCluster()
+
+save.image(file="results.simulations2.RData")
 ```
 
 
