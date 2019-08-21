@@ -329,40 +329,6 @@ for (i in 1:nrow(condensed.dataframe.subset)) {
 
 
 
-
-#I will make a list of the patches where the birds will be moving. ###***HERE I CAN MODIFY THE CODE SO THAT I CAN PUT ANY PATCH I WANT. FOR NOW I AM USING PATCHES WERE THE BIRDS WERE CAPTURED
-#Make a list with the forest raster cropped to the extent of the animal that moved
-structure <- list(id.freq=numeric(),forest.raster.cropped=list())
-
-#Make a splitted list with the id. freq. ***HERE I COULD USE THE LAND_USE_RASTER (THIS IS, THE COMPLETE MAP OF THE LANDSCAPE BUT LABALED) TO DO THE LIST SO THAT I HAVE REPRESENTED EACH PATCH OF THE LANDSCAPE. aLTERNATIVELY, FOR MY THESIS I CAN LOCATE THE PATCH IN THE LAND_USE_RASTER BASED ON THE PATCHES.LOCATION OBJECT (WHICH HAS THE XY COORDINATES OF THE PATCH WHERE THE BIRD WAS CAPTURED, SEE BELOW) TO SELECT ONLY THOSE PATCHES AND DO THE SIMULATIONS ONLY IN THOSE PATCHES
-forest.raster.cropped<-split(condensed.dataframe.subset$id,condensed.dataframe.subset$id)
-
-#Construct the list with the elements
-for (i in 1:length(forest.raster.cropped)){
-  
-  #Copy the structure of the list I want
-  forest.raster.cropped[[i]] <- structure
-  
-  #Put the id. freq. ***HERE I WOULD PUT THE PATCH ID. I THINK I AM PUTTING THE ID.FREQ BECAUSE IT IS BASED ON WHERE THE BIRD MOVED, 
-  forest.raster.cropped[[i]]$id.freq <- condensed.dataframe.subset$id[[i]] 
-  
-  #Crop the map to the area in which the animal moved. #****HERE I COULD CROP THE MAP BASED ON THE LOCATION OF THE PATCH WHERE THE BIRD MOVED
-  forest.raster.cropped[[i]]$forest.raster.cropped <- crop(land_use_raster, amt::bbox(condensed.dataframe.subset$trk[[i]], spatial = TRUE, buff = 1e3))
-  
-  #Store movment kernel
-  #forest.raster.cropped[[i]]$movement.kernel <- movement_kernel(parameters.simulations$scale.step.length[[i]], parameters.simulations$shape.step.length[[i]], forest.raster.cropped[[i]]$forest.raster.cropped)
-  
-  #Store habitat kernel
-  #forest.raster.cropped[[i]]$habitat.kernel <- habitat_kernel(list(forest27 = parameters.simulations$habitat.kernel[[i]]), forest.raster.cropped[[i]]$forest.raster.cropped)
-  
-  #Sotre forest raster labaled. #****HERE I WOULD PUT ANY CROPPED MAP BUT LABELED
-  forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-ConnCompLabel(forest.raster.cropped[[i]]$forest.raster.cropped)
-  
-}
-
-
-
-
 #This chunk is for obtaining the coordinates of the focal patch from Adam's data base and then figuring out the patch id in the croppped labeled map
 #Import data base with information about patches and xy locations of the patch
 patches.locations<-read.xlsx("Data bases/Information patches Costa Rica.xlsx",sheet=1)
@@ -379,53 +345,54 @@ frequencies.patches<-merge(frequencies.patches,patches.locations,by.x="PATCH",by
 #Remove data base
 rm(patches.locations)
 
-#I will add the information of the patches I will simulate. ***FOR NOW I WILL DO THE PATCHES WHERE THE BIRDS WERE CAPTURED, BUT I CAN DO ANY PATCH
-
-#Make a list
-structure <- list(id.freq=numeric(),focal.patch=list())
-
-#Make a splitted list with the id. freq
-focal.patch.database<-data.frame(id=condensed.dataframe.subset$id)
-
-focal.patch.database$id <- factor(focal.patch.database$id,levels=unique(focal.patch.database$id))
-
-focal.patch.database <- split(focal.patch.database$id,focal.patch.database$id)
 
 
-#I will obtain the cell number form the coordinate of the patch where the bird was captured
-for (i in 1:length(focal.patch.database)){
-  
-  #Copy the structure of the list I want
-  focal.patch.database[[i]] <- structure
-  
-  focal.patch.database[[i]]$id.freq <- condensed.dataframe.subset$id[[i]] #***HERE INSTEAD OF PUTTING THIS ID FREQUENCY I WOULD PUT THE PATCH CHARACTERISTICS
-  
-  #Obtain the x y values of the focal patch
-  focal.patch.database[[i]]$focal.patch.xy <- subset(frequencies.patches,frequencies.patches$FREQ==focal.patch.database[[i]]$id.freq)[,c("X","Y")]
-  
-  #Obtain the cell number from the xy cordinate
-  focal.patch.database[[i]]$focal.patch.label <- forest.raster.cropped[[i]]$forest.raster.cropped.labeled [cellFromXY (forest.raster.cropped[[i]]$forest.raster.cropped.labeled, focal.patch.database[[i]]$focal.patch.xy)]
-  
-}
 
 
-#JUST ADDED THIS LINE. I THINK IT WOULD BE EASIER IF I PUT ON MY DATA BASE OF THE RASTER THE INFORMATION OF THE FOCAL PATCH LABEL ID
 
 land_use_raster_labeled<-ConnCompLabel(land_use_raster)
 
+#I will make a list of the patches where the birds will be moving. ###***HERE I CAN MODIFY THE CODE SO THAT I CAN PUT ANY PATCH I WANT. FOR NOW I AM USING PATCHES WERE THE BIRDS WERE CAPTURED
+#Make a list with the forest raster cropped to the extent of the animal that moved
+structure <- list(id.freq=numeric(),forest.raster.cropped=list())
+
+#Make a splitted list with the id. freq. ***HERE I COULD USE THE LAND_USE_RASTER (THIS IS, THE COMPLETE MAP OF THE LANDSCAPE BUT LABALED) TO DO THE LIST SO THAT I HAVE REPRESENTED EACH PATCH OF THE LANDSCAPE. aLTERNATIVELY, FOR MY THESIS I CAN LOCATE THE PATCH IN THE LAND_USE_RASTER BASED ON THE PATCHES.LOCATION OBJECT (WHICH HAS THE XY COORDINATES OF THE PATCH WHERE THE BIRD WAS CAPTURED, SEE BELOW) TO SELECT ONLY THOSE PATCHES AND DO THE SIMULATIONS ONLY IN THOSE PATCHES
+forest.raster.cropped<-split(condensed.dataframe.subset$id,condensed.dataframe.subset$id)
+
+#Construct the list with the elements
 for (i in 1:length(forest.raster.cropped)){
+  
+  #Copy the structure of the list I want
+  forest.raster.cropped[[i]] <- structure
+  
+  #Put the id. freq. ***HERE I WOULD PUT THE PATCH ID. I THINK I AM PUTTING THE ID.FREQ BECAUSE IT IS BASED ON WHERE THE BIRD MOVED. ON THE FUTURE I WILL NOT NEED THIS BECAUSE I WILL HAVE THE XY COORDINATES OF THE PATCHES WHERE I WANT TO DO THE SIMULATION 
+  forest.raster.cropped[[i]]$id.freq <- condensed.dataframe.subset$id[[i]] 
   
   #Obtain the x y values of the focal patch. ###HERE I AM USING THE INFORMATION FROM ADAM FROM THE COORDINATES WHERE THE BIRDS WHERE CAPTURED, BUT I CAN USE ANY XY COORDINATE WHERE I WANT TO DO THE SIMULATION AND THEN OBTAIN THE INFORMATION OF THE CELL NUMBER FOR THE COMPLETE MAP OR THE CROPPED MAP (NEXT LINES)
   forest.raster.cropped[[i]]$focal.patch.xy <- subset(frequencies.patches,frequencies.patches$FREQ==forest.raster.cropped[[i]]$id.freq)[,c("X","Y")]
   
   #Obtain the cell number from the xy cordinate from the complete raster map
-  forest.raster.cropped[[i]]$focal.patch.label.complete.map <- land_use_raster_labeled[cellFromXY (land_use_raster_labeled, focal.patch.database[[i]]$focal.patch.xy)]
+  forest.raster.cropped[[i]]$focal.patch.label.complete.map <- land_use_raster_labeled[cellFromXY (land_use_raster_labeled, forest.raster.cropped[[i]]$focal.patch.xy)]
+  
+  #Crop the map to the area in which the animal moved. #****NOW I AM CROPPING THE MAP BASED ON THE PLACES WHERE THE BIRD MOVED, BUT I COULD CROP THE MAP BASED ON THE LOCATION OF THE PATCH WHERE I WANT TO DO THE SIMULATION
+  forest.raster.cropped[[i]]$forest.raster.cropped <- crop(land_use_raster, amt::bbox(condensed.dataframe.subset$trk[[i]], spatial = TRUE, buff = 1e3))
+  
+  #Store movment kernel
+  #forest.raster.cropped[[i]]$movement.kernel <- movement_kernel(parameters.simulations$scale.step.length[[i]], parameters.simulations$shape.step.length[[i]], forest.raster.cropped[[i]]$forest.raster.cropped)
+  
+  #Store habitat kernel
+  #forest.raster.cropped[[i]]$habitat.kernel <- habitat_kernel(list(forest27 = parameters.simulations$habitat.kernel[[i]]), forest.raster.cropped[[i]]$forest.raster.cropped)
+  
+  #Sotre forest raster labaled.
+  forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-ConnCompLabel(forest.raster.cropped[[i]]$forest.raster.cropped)
   
   #Obtain the cell number from the xy cordinate from the cropped raster map. ***I HAVE THE CORRECT VALUES OF THE RASTERS, I ONLY NEED TO MODIFY THE CODE SO THAT IT WORKS WITH THIS MODIFICATION
-  forest.raster.cropped[[i]]$focal.patch.label.cropped <- ConnCompLabel(forest.raster.cropped[[i]]$forest.raster.cropped)[cellFromXY (ConnCompLabel(forest.raster.cropped[[i]]$forest.raster.cropped), focal.patch.database[[i]]$focal.patch.xy)]
+  forest.raster.cropped[[i]]$focal.patch.label.cropped <- forest.raster.cropped[[i]]$forest.raster.cropped.labeled[cellFromXY (forest.raster.cropped[[i]]$forest.raster.cropped.labeled, forest.raster.cropped[[i]]$focal.patch.xy)]
+  
   
   
 }
+
 
 
 rm(structure)
@@ -520,7 +487,7 @@ system.time(
   results.simulations2 <- foreach (i=c(1,2,4,9,11,13,14),#c(1,4),
                                 .packages=c("amt","raster")) %dopar% {
 
-simulate.movement(focal.patch=focal.patch.database[[i]]$focal.patch.label,
+simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
                   tot.num.minutes=10,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations,
