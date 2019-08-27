@@ -18,26 +18,28 @@ http://tlocoh.r-forge.r-project.org/tips/isopleth_overlap_auto.html
 library("openxlsx")
 library("NISTunits")
 library("rgdal")
-library("ggmap")
+#library("ggmap")
 library("SDMTools")
 library("raster")
-library("MetaLandSim") # need to run code source("https://bioconductor.org/biocLite.R") biocLite("Biobase")
-library("rgeos")
+#library("MetaLandSim") # need to run code source("https://bioconductor.org/biocLite.R") biocLite("Biobase")
+#library("rgeos")
 library("maps")
-library("maptools")
-library("geosphere")
+#library("maptools")
+#library("geosphere")
 library("amt")
 library("tidyr")
-library("cowplot")
-library("reshape2")
+#library("cowplot")
+#library("reshape2")
 library("dplyr")
 library("ggplot2")
-library("ggrepel")
+#library("ggrepel")
 library("GGally")
 library("parallel")
 library("doParallel")
 library("foreach")
-library("knitr")
+library("sp")
+library("stats")
+#library("knitr")
 ```
 
 ```{r}
@@ -310,7 +312,7 @@ condensed.dataframe.subset <- condensed.dataframe.subset %>%
 #MAKE DATA BASES FOR ANALYSIS
 
 #Make a data base with the values of each parameter. 
-parameters.simulations <- data.frame(num.simulation=condensed.dataframe.subset$id) #*** IN THIS LINE I WOULD PUT THE NUMBER OF SIMULATIONS I WOULD LIKE TO DO, BUT NO I AM PUTTING THE ID OF THE BIRD SINCE EACH ONE HAS A SPECIFIC PARAMTER
+parameters.simulations <- data.frame(id.simulation=condensed.dataframe.subset$id) #*** IN THIS LINE I WOULD PUT THE NUMBER OF SIMULATIONS I WOULD LIKE TO DO, BUT NO I AM PUTTING THE ID OF THE BIRD SINCE EACH ONE HAS A SPECIFIC PARAMTER
 
 for (i in 1:nrow(condensed.dataframe.subset)) {
   
@@ -329,7 +331,7 @@ for (i in 1:nrow(condensed.dataframe.subset)) {
 
 
 
-#This chunk is for obtaining the coordinates of the focal patch from Adam's data base and then figuring out the patch id in the croppped labeled map
+#This chunk is for obtaining the coordinates of the focal patch from Adam's data base and then figuring out the patch id in the croppped labeled map. ***MAYBE HERE I CAN CREATE A DATA BASE WITH THE XY COORDINATES OF THE PATCHES WHERE I WOULD LIKE TO DO THE SIMULATIONS
 #Import data base with information about patches and xy locations of the patch
 patches.locations<-read.xlsx("Data bases/Information patches Costa Rica.xlsx",sheet=1)
 
@@ -345,18 +347,14 @@ frequencies.patches<-merge(frequencies.patches,patches.locations,by.x="PATCH",by
 #Remove data base
 rm(patches.locations)
 
-
-
-
-
-
+#Create an object with the land use raster map but labelled
 land_use_raster_labeled<-ConnCompLabel(land_use_raster)
 
 #I will make a list of the patches where the birds will be moving. ###***HERE I CAN MODIFY THE CODE SO THAT I CAN PUT ANY PATCH I WANT. FOR NOW I AM USING PATCHES WERE THE BIRDS WERE CAPTURED
 #Make a list with the forest raster cropped to the extent of the animal that moved
 structure <- list(id.freq=numeric(),forest.raster.cropped=list())
 
-#Make a splitted list with the id. freq. ***HERE I COULD USE THE LAND_USE_RASTER (THIS IS, THE COMPLETE MAP OF THE LANDSCAPE BUT LABALED) TO DO THE LIST SO THAT I HAVE REPRESENTED EACH PATCH OF THE LANDSCAPE. aLTERNATIVELY, FOR MY THESIS I CAN LOCATE THE PATCH IN THE LAND_USE_RASTER BASED ON THE PATCHES.LOCATION OBJECT (WHICH HAS THE XY COORDINATES OF THE PATCH WHERE THE BIRD WAS CAPTURED, SEE BELOW) TO SELECT ONLY THOSE PATCHES AND DO THE SIMULATIONS ONLY IN THOSE PATCHES
+#Make a splitted list with the id. freq. ***HERE I COULD USE THE LAND_USE_RASTER (THIS IS, THE COMPLETE MAP OF THE LANDSCAPE BUT LABALED) TO DO THE LIST SO THAT I HAVE REPRESENTED EACH PATCH OF THE LANDSCAPE. aLTERNATIVELY, FOR MY THESIS I CAN LOCATE THE PATCH IN THE LAND_USE_RASTER BASED ON THE PATCHES.LOCATION OBJECT (WHICH HAS THE XY COORDINATES OF THE PATCH WHERE THE BIRD WAS CAPTURED, SEE BELOW) TO SELECT ONLY THOSE PATCHES AND DO THE SIMULATIONS ONLY IN THOSE PATCHES. I COULD USE THE frequencies.patches DATA BASE (WHERE I AM PLANNING TO PUT THE XY LOCATIONS OF THE PATCHES WHERE I WOULD LIKE TO DO THE SIMULATIONS) TO SPLIT IT AND THEN USE THAT INFORMATION TO DO THE SIMULATIONS
 forest.raster.cropped<-split(condensed.dataframe.subset$id,condensed.dataframe.subset$id)
 
 #Construct the list with the elements
@@ -462,6 +460,8 @@ data %>%
   geom_density(alpha=.2, fill="#FF6666") +
   facet_wrap(~term,scales="free")
   
+
+rm(graph.parameters.database)
 ```
 
 
@@ -476,15 +476,14 @@ num.sim.points.per.patch<-2
 num.sim.per.point<-1
 
 #Make a list of the
-results.simulations <- split(parameters.simulations$num.simulation,parameters.simulations$num.simulation)
+results.simulations.list <- split(parameters.simulations$id.simulation,parameters.simulations$id.simulation)
 
 registerDoParallel(detectCores())
 #registerDoParallel(10)
 
 #1,2,4,8,13,15,17,18
 #for (i in 1:nrow(parameters.simulations)){
-system.time(
-  results.simulations2 <- foreach (i=c(1,2,4,9,11,13,14),#c(1,4),
+results.simulations.list <- foreach (i=c(1,2,4,9,11,13,14),#c(1,4),
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
@@ -501,14 +500,125 @@ simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropp
 
   
 }
-)
+
 
 
 stopImplicitCluster()
 
-save.image(file="results.simulations2.RData")
+#save.image(file="results.simulations2.RData")
+```
+
+
+```{r}
+#Obtain the information from the list in a data base. ####CONTINUE HERE. I THINK THAT THE STRUCTURE OF THE DATA BASE IS DIFFERENT BECAUSE I AM USING A FOREACH LOOP. UNDERSTAND THE NEW STRUCTURE SO THAT I CAN MODIFY THIS CODE. 
+#raw.dataframe(#focal.patch=focal.patch,
+ # name.input.database=results.simulations2,
+              #name.output.dataframe=raw.formated.results.emigration)
+
+#***ADDED THIS CHUNK OF CODE. IT IS THE CODE I HAVE FOR THE FUNCTION raw.dataframe BUT OUTSIDE IS WORKING
+  #Create a data frame with 1 row and the number of columns so that it matches the data frame 
+  #I generated for each simulation (in this case is called results.simulations2). I am using the
+  #first element of the list as a molde
+  results.simulations.df<-data.frame(matrix(0,
+                                          ncol=ncol(results.simulations.list[[1]][[1]][[1]][[1]]),
+                                          nrow=1)) 
+  
+  #Name columns
+  names(results.simulations.df)<-names(results.simulations.list[[1]][[1]][[1]][[1]])
+
+
+  #Paste all data bases
+  for (z in 1:length(results.simulations.list)){
+    
+    for(a in 1:length(results.simulations.list[[z]])){
+      
+      for (g in 1:num.sim.points.per.patch){
+        
+        for(l in 1:num.sim.per.point)
+      {
+        
+        df<-results.simulations.list[[z]][[a]][[g]][[l]]
+        
+        results.simulations.df<-rbind(df,results.simulations.df)
+        
+      }
+    }
+  }
+  }
+  
+  
+  #Delete last observation which has nothing
+  results.simulations.df<-results.simulations.df[-nrow(results.simulations.df),]
+
+
 ```
 
 
 
+```{r}
+#Obtain data base with values aggregated by time and showing the proportion of fruit in each faith by time. ###***I DO NOT KNOW WELL HOW AM I GOING TO DO THIS ANALYSIS, SO I DO NOT KNOW WELL THE STRUCTURE OF THE DATA BASE. sPECIFICALLY, I DO NOT KNOW IF I HAVE TO INCLUDE THE PARAMETERS VALUES
+final.database(name.input.database=results.simulations.df,name.output.dataframe=results.emigration)
+
+
+```
+
+```{r}
+##Obtain the dispersal distance for each fix rate
+dispersal.distance(#focal.patch=focal.patch,
+                   name.input.database=results.simulations.list)
+```
+
+```{r}
+#Obtain the information from the list in a data base including the seed dispersal distance
+#raw.dataframe(#for.seed.dispersal="Y",
+                #focal.patch=focal.patch,
+                #name.input.database=results.simulations2,
+                #name.output.dataframe=raw.results.emigration.dispersal.distance)  
+
+
+###ADDED THIS CODE SINCE THE FUNCTION IS NOT WORKING
+#Create a data frame with 1 row and the number of columns so that it matches the data frame 
+  #I generated for each simulation (in this case is called results.simulations2). I am using the
+  #first element of the list as a molde
+  results.simulations.dispersal.distance.df<-data.frame(matrix(0,
+                                          ncol=ncol(results.simulations.list[[1]][[1]][[1]][[1]]),
+                                          nrow=1)) 
+  
+  #Name columns
+  names(results.simulations.dispersal.distance.df)<-names(results.simulations.list[[1]][[1]][[1]][[1]])
+  
+
+  #Paste all data bases
+  for (z in 1:length(results.simulations.list)){
+    
+    for(a in 1:length(results.simulations.list[[z]])){
+      
+      for (g in 1:num.sim.points.per.patch){
+        
+        for(l in 1:num.sim.per.point)
+      {
+        
+        df<-results.simulations.list[[z]][[a]][[g]][[l]]
+        
+        results.simulations.dispersal.distance.df<-rbind(df,results.simulations.dispersal.distance.df)
+        
+      }
+    }
+  }
+  }
+  
+  
+  #Delete last observation which has nothing
+  results.simulations.dispersal.distance.df<-results.simulations.dispersal.distance.df[-nrow(results.simulations.dispersal.distance.df),]
+  
+
+
+```
+
+```{r}
+#ANALYZE PARAMETERS VERSUS DISPERSAL DISTANCE
+#dispersal.distance~param.shape.step.length + para.habitat.utilization + time
+
+
+```
 
