@@ -487,7 +487,7 @@ results.simulations.list <- foreach (i=c(1,2,4,9,11,13,14),#c(1,4),
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
-                  tot.num.minutes=10,
+                  tot.num.minutes=60,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
@@ -618,7 +618,30 @@ dispersal.distance(#focal.patch=focal.patch,
 ```{r}
 #ANALYZE PARAMETERS VERSUS DISPERSAL DISTANCE
 #dispersal.distance~param.shape.step.length + para.habitat.utilization + time
+results.simulations.dispersal.distance.df %>% 
+  select(dispersal.distance,param.shape.step.length,param.habitat.utilization,time) %>%
+  ggpairs(upper=list(continuous="smooth"),lower=list(continuous="cor"))
 
+
+#Model without random structure
+summary(mod.1<-gls(dispersal.distance ~param.shape.step.length + param.habitat.utilization + time,method = "REML", data = results.simulations.dispersal.distance.df))
+
+
+#GLMM nesting frequency
+summary(mod.2<-lme(dispersal.distance ~param.shape.step.length + param.habitat.utilization + time,random = ~1 | id.simulation,data=results.simulations.dispersal.distance.df,method="REML"))
+
+#Continue with LMM
+#Without habitat utilization
+summary(mod.3 <- update(mod.2,.~. -param.habitat.utilization))
+
+#Without step length
+summary(mod.4 <- update(mod.3,.~. -param.shape.step.length))
+
+
+results.simulations.dispersal.distance.df %>% 
+  ggplot(aes(x=time,y=dispersal.distance,group=time)) + 
+  geom_boxplot() +
+  geom_smooth(method="lm")
 
 ```
 
