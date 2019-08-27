@@ -33,7 +33,7 @@ simulate.movement<-function(focal.patch=NA,
   
   #Create a data frame with the information needed from the output
   one.sim <<-data.frame(focal.patch=0,
-                       bird.id=rep(x=1,each=tot.num.steps+1), #bird id. ##***I do not know if this is useful
+                       num.simulation=0, #bird id. ##***I do not know if this is useful
                        param.shape.step.length=0,
                        param.scale.step.length=0,
                        param.habitat.utilization=0,
@@ -47,6 +47,7 @@ simulate.movement<-function(focal.patch=NA,
                        new.patch=0) #value of the raster (type of vegetation)
   
   
+  one.sim$id.simulation=parameters.simulations$id.simulation[[i]]
   one.sim$param.shape.step.length=parameters.simulations$shape.step.length[[i]]
   one.sim$param.scale.step.length=parameters.simulations$shape.scale.length[[i]]
   one.sim$param.habitat.utilization=parameters.simulations$habitat.utilization[[i]]
@@ -78,7 +79,7 @@ for (z in 1:length(focal.patch)){
       time.location.regurgitation[[z]][[g]][[l]] <<- one.sim
       
       #Adds the bird id
-      time.location.regurgitation[[z]][[g]][[l]]$bird.id<<-l
+      time.location.regurgitation[[z]][[g]][[l]]$num.simulation<<-g
       
       #Add the id of the focal patch
       time.location.regurgitation[[z]][[g]][[l]]$focal.patch<<-focal.patch[z]
@@ -210,7 +211,6 @@ for (z in 1:length(focal.patch)){
         print(paste("Step",k-1,"of",tot.num.steps,"steps"))
       }}}}
   
-  
    time.location.regurgitation
   
 }
@@ -280,7 +280,7 @@ for (z in 1:length(focal.patch)){
       points(dataframe.results[[z]][[g]][[l]]$x,dataframe.results[[z]][[g]][[l]]$y,
              pch=19,cex=0.5, type="b")
       lines(dataframe.results[[z]][[g]][[l]]$x,dataframe.results[[z]][[g]][[l]]$y,
-            col=dataframe.results[[z]][[g]][[l]]$bird.id,lwd=2)
+            col=dataframe.results[[z]][[g]][[l]]$num.simulation,lwd=2)
       
       #Ploints plot in yellow where the animal started and in red where the animal stopped
       points(dataframe.results[[z]][[g]][[l]]$x[c(1,length(dataframe.results[[z]][[g]][[l]]$x))],
@@ -369,7 +369,7 @@ individual.map.simulations<-function(focal.patch=NA,
         points(dataframe.results[[z]][[g]][[l]]$x,dataframe.results[[z]][[g]][[l]]$y,
                pch=19,cex=0.5, type="b")
         lines(dataframe.results[[z]][[g]][[l]]$x,dataframe.results[[z]][[g]][[l]]$y,
-              col=dataframe.results[[z]][[g]][[l]]$bird.id,lwd=2)
+              col=dataframe.results[[z]][[g]][[l]]$num.simulation,lwd=2)
         
         #Ploints plot in yellow where the animal started and in red where the animal stopped
         points(dataframe.results[[z]][[g]][[l]]$x[c(1,length(dataframe.results[[z]][[g]][[l]]$x))],
@@ -396,6 +396,59 @@ individual.map.simulations<-function(focal.patch=NA,
 }
 
 
+####FUNCTION FOR FORMATTING THE LIST INTO A DATA BASE####
+raw.dataframe<-function(for.immigration="N",
+                        focal.patch=NA,
+                        name.input.database=NA,
+                        name.output.dataframe=NA){
+  
+  #Create a data frame with 1 row and the number of columns so that it matches the data frame 
+  #I generated for each simulation (in this case is called results.simulations2). I am using the
+  #first element of the list as a molde
+  database.simulations<-data.frame(matrix(0,
+                                          ncol=ncol(name.input.database[[1]][[1]][[1]][[1]]),
+                                          nrow=1)) 
+  
+  #Name columns
+  names(database.simulations)<-names(name.input.database[[1]][[1]][[1]][[1]])
+  
+  #If the function is used for immigration, then it will add a column named immigrated
+  if(for.immigration=="Y"){
+    database.simulations$immigrated<-0
+  }
+
+
+  #Paste all data bases
+  for (z in 1:length(name.input.database)){
+    
+    for(a in 1:length(name.input.database[[z]])){
+      
+      for (g in 1:num.sim.points.per.patch){
+        
+        for(l in 1:num.sim.per.point)
+      {
+        
+        df<-name.input.database[[z]][[a]][[g]][[l]]
+        
+        database.simulations<-rbind(df,database.simulations)
+        
+      }
+    }
+  }
+  }
+  
+  
+  #Delete last observation which has nothing
+  database.simulations<-database.simulations[-nrow(database.simulations),]
+  
+  #Assign the data frame the name of the data frame I put at the beginning of the function
+  assign(deparse(substitute(name.output.dataframe)),
+         results.simulations, envir=.GlobalEnv)
+  
+  #write.csv(results.emigration,"borrar.csv",row.names=F)
+  #write.csv(results.simulations,"immigration results focal patch 13 freq bird 851.csv",row.names=F)
+}
+
 ####FUNCTION FOR OBTAINING THE FORMATED DATA BASE####
 #These function needs the following information:
 #name.input.database: name of the data base that has the information from the movement behavior simulation
@@ -404,37 +457,15 @@ final.database<-function(for.immigration="N",
                          focal.patch=NA,
                          name.input.database=NA,
                          name.output.dataframe=NA){
-  #Storing the names I put for each variable in the function so that I can use it in the other function
-  focal.patch<-focal.patch
-  name.input.database<-name.input.database
-  for.immigration<-for.immigration
-  
-  #Formatting the data base
-  raw.dataframe(for.immigration=for.immigration,
-                focal.patch=focal.patch,
-                name.input.database=name.input.database, #name.input.database=raw.results.emigration,
-                name.output.dataframe=database.simulations)  
-  
-  
-  #Convert from wide to long
-  database.simulations.long<-melt(database.simulations,id.vars=c("focal.patch","bird.id","time","x","y","raster.value","patch.emigrated"))
-  
-  names.columns<-levels(database.simulations.long$variable)
-  
-  #Name columns
-  names(database.simulations.long)<-c("focal.patch","bird.id","time","x","y","raster.value","patch.emigrated","faith","count")
-  
-  #Aggregate by patch, time and faith
-  results.simulations<-aggregate(database.simulations.long$count,
-                                 by=list(focal.patch=database.simulations.long$focal.patch,
-                                         time=database.simulations.long$time,
-                                         faith=database.simulations.long$faith),FUN=sum)
-  
-  #Name columns
-  colnames(results.simulations)[4]<-"count"
-  
-  #Convert from long to wide
-  results.simulations<-spread(results.simulations, faith, count)
+
+#Formating data base  
+  results.simulations <- name.input.database %>% 
+    select(-raster.value) %>% 
+    gather(fate,yes.no,same.patch:new.patch) %>% #Convert from wide to long
+    group_by(focal.patch,time,fate) %>% 
+    summarise(count=sum(yes.no)) %>% #Count number of fruits thtat landed in the matrix, same patch or new patch
+    ungroup() %>% 
+    spread(fate, count) #Convert from long to wide
   
   #If the function is used for the immigration part, then it has to consider the immigration column generated
   if(for.immigration=="Y"){
@@ -463,63 +494,17 @@ final.database<-function(for.immigration="N",
   
   #write.csv(results.emigration,"borrar.csv",row.names=F)
   #write.csv(results.simulations,"immigration results focal patch 13 freq bird 851.csv",row.names=F)
-}
-####FUNCTION FOR FORMATTING THE LIST INTO A DATA BASE####
-raw.dataframe<-function(for.immigration="N",
-                        for.seed.dispersal="N",
-                        focal.patch=NA,
-                        name.input.database=NA,
-                        name.output.dataframe=NA){
-  library("reshape2")
-  #Create a data frame with 1 row and 10 columns so that it matches the data frame I generated for each simulation
-  database.simulations<-data.frame(matrix(0,ncol=10,nrow=1)) #*****HERE I NEED TO ADAPT THE CODE SO THAT IT MATCHES WITH THE RANDOM STEPS I SET
-  
-  #Name columns
-  names(database.simulations)<-names(one.sim)
-  
-  #If the function is used for immigration, then it will add a column named immigrated
-  if(for.immigration=="Y"){
-    database.simulations$immigrated<-0
-  }
-  
-  #If the function is used for obtaining the seed dispersal distance, then it will add a column named dispersal.distance
-  if(for.seed.dispersal=="Y"){
-    database.simulations$dispersal.distance<-0
-  }
-  
-  #IT DID NOT WORK. Create a function to subset the rows with a specific regurgitation time. But still does the job
-  for (z in 1:length(focal.patch)){
-    for (g in 1:num.sim.points.per.patch){
-      
-      for(l in 1:num.sim.per.point)
-      {
-        
-        df<-subset(name.input.database[[z]][[g]][[l]],
-                   name.input.database[[z]][[g]][[l]]$time==time)
-        
-        database.simulations<-rbind(df,database.simulations)
-        
-      }
-    }
-  }
-  
-  
-  
-  #Delete last observation which has nothing
-  database.simulations<-database.simulations[-nrow(database.simulations),]
-  
-  #Assign the data frame the name of the data frame I put at the beginning of the function
-  assign(deparse(substitute(name.output.dataframe)),
-         database.simulations, envir=.GlobalEnv)
   
 }
+
 ####FUNCTION FOR OBTAINING THE DISPERSAL DISTANCE####
 dispersal.distance<-function(focal.patch=NA,
                              name.input.database=NA){
   
   df<-name.input.database
   
-  for (z in 1:length(focal.patch)){
+  for (z in 1:length(name.input.database)){
+    for(a in 1:length(name.input.database[[z]])){
     for (g in 1:num.sim.points.per.patch){
       
       for(l in 1:num.sim.per.point)
@@ -527,17 +512,19 @@ dispersal.distance<-function(focal.patch=NA,
         #Create a column for the dispersal distance
         #df[[z]][[g]][[l]]$disperal.distance<-0
         
-        for (k in 2:nrow(df[[z]][[g]][[l]]))
+        for (k in 2:nrow(df[[z]][[a]][[g]][[l]]))
         #It will use the first xy values row and obtain the distance in the x y values of the n row of the data frame
-          df[[z]][[g]][[l]][k,"dispersal.distance"]<-pointDistance(df[[z]][[g]][[l]][1,c("x","y")], #Always select the first row since it is the starting point
-                                                                   df[[z]][[g]][[l]][k,c("x","y")], #Select row k
+          df[[z]][[a]][[g]][[l]][k,"dispersal.distance"]<-pointDistance(df[[z]][[a]][[g]][[l]][1,c("x","y")], #Always select the first row since it is the starting point
+                                                                   df[[z]][[a]][[g]][[l]][k,c("x","y")], #Select row k
                                                                    lonlat=F)
+        df[[z]][[a]][[g]][[l]][1,"dispersal.distance"]<-0
+        
         #Assign the data frame the name of the data frame I put at the beginning of the function
         assign(deparse(substitute(name.input.database)),
                df, envir=.GlobalEnv)
       }
     }
   }
-  
+  }
   
 }
