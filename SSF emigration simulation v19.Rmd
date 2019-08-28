@@ -37,7 +37,7 @@ http://tlocoh.r-forge.r-project.org/tips/isopleth_overlap_auto.html
 rm(list=ls(all=TRUE))
 
 #Source functions
-source("Clean SSF data base.R") #I just dpulicated the code I used for cleaning the tleemtry data just in case I modified the latter, so to avoid that the changes affect the present code 
+source("Clean SSF data base.R") #I just dpulicated the code I used for cleaning the telemetry data just in case I modified the latter, so to avoid that the changes affect the present code 
 
 #Function for cleaning telemetry data base
 clean.tel.data()
@@ -466,11 +466,11 @@ Run replicate simulations:
 
 source("SSF simulation functions.R")
 
-num.sim.points.per.patch<-50
+num.sim.points.per.patch<-3
 num.sim.per.point<-1
 
 simulate.movement(focal.patch=focal.patch,
-                  tot.num.minutes=60,
+                  tot.num.minutes=40,
                   fix.rate=5,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
                   num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
@@ -1185,6 +1185,8 @@ counts<-counts[order(-counts$matrix),]
 counts.matrix<-t(data.matrix(counts[,2:3]))
 colnames(counts.matrix)<-counts[,1]
 
+
+
 jpeg("Graphs/forest end by id frequency.jpg",quality=100,width=1000,height=700)
 
 par(mar=c(5,5,2,9),xpd=T)
@@ -1524,6 +1526,150 @@ mutate(id = factor(id)) #filter(conf.low!=-Inf)  %>% #I added this line since th
 ```
 
 
+#THIS CODE OF CHUNK IS NEW
+
+### Adjusting parameters of Gamma distribution
+
+```{r}
+#Adjusting the shape parameter of the gamma distribution
+shape <- sl_shape(m1)
+scale <- sl_scale(m1)
+
+```
+
+
+### Prepare kernels. THESE CHUNKS WILL PUT THE BIRD IN THE PATCH WERE IT WAS CAPTURED
+```{r}
+forest.raster_c <- crop(land_use, amt::bbox(dat_1, spatial = TRUE, buff = 1e3)) #Cropping the raster map for only a subset of it. Here I would crop it each time there is a step.
+
+#CHECK WHAT IS INCLUDING IN THE MOVEMENT KERNEL SINCE I DO NOT UNDERSTAND IT VERY WELL
+mk <- movement_kernel(scale, shape, forest.raster_c) #It is including the scale and shape parameter. The map is forest.raster_c
+hk <- habitat_kernel(list(forest27 = coef(m1)["forest27_end"]), forest.raster_c) #forest.raster_c contians the map with the habitat information
+```
+
+```{r}
+#Make a raster that has the patch id
+forest.raster_c_labeled<-ConnCompLabel(forest.raster_c)
+```
+
+
+```{r}
+#This chunk is for obtaining the coordinates of the focal patch from Adam's data base and then figuring out the patch id in the croppped labeled map
+#Import data base with information about patches and xy locations of the patch
+patches.locations<-read.xlsx("Data bases/Information patches Costa Rica.xlsx",sheet=1)
+
+#Select columns with patch and coordinates information
+patches.locations<-patches.locations[,c("PATCH_ID","X","Y")]
+
+#Import data base with information about frequencies with patches
+frequencies.patches<-read.xlsx("Data bases/Frequencies patches.xlsx",sheet=1)
+
+#MErge the patches where birds were sampled with xy information
+frequencies.patches<-merge(frequencies.patches,patches.locations,by.x="PATCH",by.y="PATCH_ID",all=T)
+
+#Remove data base
+rm(patches.locations)
+
+#Subset information of x y location of the patch where I tracked the bird
+focal.patch<-subset(frequencies.patches,frequencies.patches$FREQ==id.freq)[,c("X","Y")] 
+
+#Obtain patch number
+focal.patch<-forest.raster_c_labeled[cellFromXY(forest.raster_c_labeled,focal.patch)]
+
+
+```
+
+
+#Plot actual steps
+```{r}
+jpeg(paste("Graphs/Original movement bird frequency ",id.freq,".jpg"),quality=100,width=1000,height=700)
+  
+
+
+#Subset coordinates of actual steps
+focal.patch.actual.steps<-subset(frequencies.patches,frequencies.patches$FREQ==id.freq)[,c("X","Y")] 
+
+#Set the extent of the new patch where I will do the simulation
+offset<-800
+bounding.box<-data.frame(x=c(focal.patch.actual.steps$X+offset,focal.patch.actual.steps$X-offset),y=c(focal.patch.actual.steps$Y+offset,focal.patch.actual.steps$Y-offset))
+
+#Crop map
+forest.raster.croped.actual.steps<-crop(land_use, extent(bounding.box))
+
+#plot(forest.raster.croped.actual.steps,main=paste("Id frequency",id.freq),legend=F,cex.axis=5,xaxt="n",yaxt="n")
+plot(forest.raster.croped.actual.steps,main=ifelse(id.freq==232,"NF in small isolated",ifelse(id.freq==851,"F&NF in small connected",ifelse(id.freq==392,"F in large connected",""))),legend=F,cex.axis=5,xaxt="n",yaxt="n",cex.main=4)
+
+#Use raw data base to draw lines in plot
+steps<-dat %>% 
+  filter(id==id.freq) 
+
+lines(steps[,c("x")],steps[,c("y")],col="black",lwd=8)
+
+#points(steps[1,"x"],steps[1,"y"],col="red",pch=16,cex=1)
+points(steps$x,steps$y,col="red",pch=13,cex=3)
+
+#scalebar(1000,type="bar",below="Meters",adj=c(0.5,-1.5))
+library("SDMTools")
+#Scalebar(x=283200,y=968350,distance=1000,unit="m",t.cex=4) #id.freq 232
+#Scalebar(x=282750,y=963000,distance=1000,unit="m",t.cex=4) #id.freq 851
+Scalebar(x=280800,y=970800,distance=1000,unit="m",t.cex=4) #id.freq 392
+
+
+#points(steps[nrow(steps),"x"],steps[nrow(steps),"y"],col="blue",pch=16,cex=1)
+
+dev.off()
+
+
+ # library("rasterVis")
+#  gplot(crop(land_use,extent(Extent))) +
+#    geom_tile(aes(fill = value))
+
+
+  
+#library("tmap")
+#  tm_shape(crop(land_use,extent(Extent))) + 
+#    tm_raster(palette=c("white","green"),legend.show=F) +
+#    tm_scale_bar(breaks = c(0,0.4,0.8),size = 1) +
+#    tm_symbols(size=1)
+  
+```
+
+
+
+Run replicate simulations:
+
+```{r}
+
+source("SSF simulation functions.R")
+
+num.sim.points.per.patch<-50
+num.sim.per.point<-1
+
+simulate.movement(focal.patch=focal.patch,
+                  tot.num.minutes=60,
+                  fix.rate=5,
+                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  map.full=land_use,
+                  map.cropped=forest.raster_c,
+                  map.cropped.labeled=forest.raster_c_labeled,
+                  name.output.dataframe=raw.results.emigration)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#eND OF THE NEW CODE OF CHUNK
 
 ```{r}
 d<-data %>% 
