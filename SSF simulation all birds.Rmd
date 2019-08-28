@@ -196,7 +196,7 @@ x %>%
 ```
 
 #Plot habitat selection by bird (includes all birds)
-```{r}
+```{r,purl=FALSE}
 #Obtain the information from the condensed data frame
 tracking.database.unlisted<- condensed.dataframe.subset %>% 
   select(id, ssf) %>% 
@@ -252,13 +252,14 @@ tracking.database.unlisted %>%
   geom_hline(yintercept=c(-180,180),linetype="dashed")
 #ggsave("Graphs/Turning angle by bird.jpg")
 
+##**CONTINUE HERE. FOR THE RESULTS, I CAN DO A DENSITY PLOT OF THE TURNING ANGLE AND STEP LENGHT
  
 rm(counts,counts.matrix)
 ```
 
 #LM for differences between step length in patches
 
-```{r}
+```{r,purl=FALSE}
 #Merge variables of movement behavior with environmental variables of patches. #**Although now that I think about it, it would be better to have the environmental variables of a buffer of each step
 tracking.database.unlisted<-freq.patches %>% 
   inner_join(tracking.database.unlisted,by=c("FREQ"="id")) %>% 
@@ -472,7 +473,7 @@ Run replicate simulations:
 source("SSF simulation functions all birds.R")
 
 #Set up the number of simulations per patch and also number of simulations per starting point
-num.sim.points.per.patch<-2
+num.sim.points.per.patch<-50
 num.sim.per.point<-1
 
 #Make a list of the
@@ -615,7 +616,7 @@ dispersal.distance(#focal.patch=focal.patch,
 
 ```
 
-```{r}
+```{r,purl=FALSE}
 #ANALYZE PARAMETERS VERSUS DISPERSAL DISTANCE
 #dispersal.distance~param.shape.step.length + para.habitat.utilization + time
 results.simulations.dispersal.distance.df %>% 
