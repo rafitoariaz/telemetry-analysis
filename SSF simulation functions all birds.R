@@ -455,6 +455,7 @@ raw.dataframe<-function(for.immigration="N",
 #name.output.dataframe: name for the generated data base
 final.database<-function(for.immigration="N",
                          focal.patch=NA,
+                         times=unique(name.input.database$time),
                          name.input.database=NA,
                          name.output.dataframe=NA){
 
@@ -462,7 +463,7 @@ final.database<-function(for.immigration="N",
   results.simulations <- name.input.database %>% 
     select(-raster.value) %>% 
     gather(fate,yes.no,same.patch:new.patch) %>% #Convert from wide to long
-    group_by(focal.patch,time,fate) %>% 
+    group_by(focal.patch,param.shape.step.length,param.habitat.utilization,time,fate) %>% 
     summarise(count=sum(yes.no)) %>% #Count number of fruits thtat landed in the matrix, same patch or new patch
     ungroup() %>% 
     spread(fate, count) #Convert from long to wide
@@ -471,10 +472,8 @@ final.database<-function(for.immigration="N",
   if(for.immigration=="Y"){
     #Obtain the proportion of seeds that emigrated for each specific column
     results.simulations<-cbind(results.simulations,
-                               prop.table(as.matrix(results.simulations[,c("same.patch","matrix","new.patch","immigrated")]),1))
-    #Rename columns
-    colnames(results.simulations)[7:10]<-c("prop.same.patch","prop.matrix","prop.new.patch","prop.immigrated")
-    
+                               prop.table(as.matrix(results.simulations[,c("same.patch","matrix","new.patch","immigrated")]),1) %>% 
+                                 set_colnames(c("prop.same.patch","prop.matrix","prop.new.patch"))) #rename columns
   }
   
   #If the function is used for emmigration, then the immigration column is not generated so it is not considered in the code
@@ -482,10 +481,9 @@ final.database<-function(for.immigration="N",
     
     #Obtain the proportion of seeds that emigrated for each specific column
     results.simulations<-cbind(results.simulations,
-                               prop.table(as.matrix(results.simulations[,c("same.patch","matrix","new.patch")]),1))
-    #Rename columns
-    colnames(results.simulations)[6:8]<-c("prop.same.patch","prop.matrix","prop.new.patch")
-    
+                               prop.table(as.matrix(results.simulations[,c("same.patch","matrix","new.patch")]),1) %>% 
+                                 set_colnames(c("prop.same.patch","prop.matrix","prop.new.patch")))  #rename columns
+
   }
   
   #Assign the data frame the name of the data frame I put at the beginning of the function
