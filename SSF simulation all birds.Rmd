@@ -40,11 +40,12 @@ library("foreach")
 library("sp")
 library("stats")
 #library("knitr")
+library("ggpubr")
 ```
 
 ```{r}
 #Convert the Rmd file to R file so that it can be read on the super computer
-#purl("SSF simulation all birds.Rmd",output="SSF simulation all birds R file.R")
+#purl("SSF_simulation_all_birds.Rmd",output="SSF simulation all birds R file.R")
 
 ```
 
@@ -169,6 +170,12 @@ condensed.dataframe.subset <- condensed.dataframe.subset %>%
 mutate(trk = lapply(data, function(d) {
 mk_track(d, x, y, t )
 }))
+
+#Make a track for each individual but including all samped birds. I am doing this so that I can have statistics of step length, habitat selection and turning angle of all birds and not only a subset of them
+condensed.dataframe <- condensed.dataframe %>%
+mutate(trk = lapply(data, function(d) {
+mk_track(d, x, y, t )
+}))
 ```
 
 ```{r}
@@ -193,18 +200,31 @@ x %>%
     mutate(log_sl_ = log(sl_)) #Obtain logarithm of step lenght
 }))
 
+
+#Doing the sam process for the data base with all individuals
+condensed.dataframe <- condensed.dataframe %>% mutate(ssf = lapply(trk, function(x) {
+x %>% 
+    track_resample(rate = minutes(5), tolerance = minutes(2)) %>% #A track will be considered if the two consecutive GPS points are separated by 5 minutes +- 2 minutes of tolerance
+    filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
+    steps_by_burst() %>% #Converts the points to tracks
+    random_steps() %>% #Makes 9 random steps
+    extract_covariates(land_use_raster, where = "both") %>% #Extracts covariates of vegetation on initial and ending location. In "amt tutorial.pdf" it explains the following: covariate values at the start and the end of a step can also be included in the model as interaction with each other, to test hypotheses of the type: Are animals more likely to stay in a given habitat, if they are already in the habitat?
+    mutate(forest27_start = factor(forest27_start, levels = c(0, 1), labels = c("matrix", "forest"))) %>% #factor (forest27_start you have to check the name of the column of the data base that is generated one step before (in this case is forest27_start). Just run the 2 precedent pipe lines and a tibble with the names of the column will appeaar)
+    mutate(forest27_end = factor(forest27_end, levels = c(0, 1), labels = c("matrix", "forest"))) %>% 
+    mutate(log_sl_ = log(sl_)) #Obtain logarithm of step lenght
+}))
+
 ```
 
 #Plot habitat selection by bird (includes all birds)
 ```{r,purl=FALSE}
 #Obtain the information from the condensed data frame
-tracking.database.unlisted<- condensed.dataframe.subset %>% 
+tracking.database.unlisted<- condensed.dataframe %>% 
   select(id, ssf) %>% 
   unnest %>%
   select(id,case_,step_id_,sl_,ta_,forest27_start,forest27_end,log_sl_) %>% 
   filter(case_==TRUE) %>% 
   ungroup()
-
 
 counts<-table(tracking.database.unlisted$forest27_end,tracking.database.unlisted$id)
 par(mar=c(5,5,2,9),xpd=T)
@@ -227,11 +247,23 @@ barplot(counts.matrix,xlab="Bird id",ylab="Proportion of GPS points per habitat"
 
 legend(x=17,y=0.8,legend=c("Non-forested area","Forested area"),fill=c("grey","grey50"),bty="n")
 
+#Summary of proporiton of points in matrix
+counts %>% 
+  filter(matrix<1 & matrix>0) %>% 
+  summary()
+
+#Boxplot of proporiton of points in matrix
+counts %>% 
+  filter(matrix<1 & matrix>0) %>% 
+  ggplot(aes(y=matrix)) +
+  geom_boxplot()
 
 #dev.off()
+```
 
 
-
+```{r,purl=FALSE}
+#Step length statistics
 #Step length by bird
 tracking.database.unlisted %>% 
   mutate(id=as.factor(id)) %>% 
@@ -241,7 +273,77 @@ tracking.database.unlisted %>%
   ylab("Log step length")
 #ggsave("Graphs/Step length by bird.jpg")
 
+#Satistics of step lenght
+summary(tracking.database.unlisted$sl_)
+table(round(tracking.database.unlisted$sl_))
+tapply(tracking.database.unlisted$sl_,tracking.database.unlisted$forest27_start,summary)
 
+###Density plot of log step length per vegetal cover
+tracking.database.unlisted %>% 
+  ggplot(aes(x=log_sl_)) + 
+  geom_histogram(aes(y=..density..),colour="black", fill="white") +
+  geom_density(alpha=.2, fill="#FF6666") +
+  facet_wrap(~forest27_start)
+
+tracking.database.unlisted %>% 
+  mutate(breaks=cut(.$sl_,c(0,1,10,30,50,100,max(.$sl)))) %>% 
+  group_by(breaks) %>% 
+  summarise(proportion=n()/nrow(tracking.database.unlisted)) %>% 
+  ungroup()
+
+
+##Proportion of steps by step lenght in matrix
+matrix<-tracking.database.unlisted %>% 
+  filter(forest27_start=="matrix") %>% 
+  mutate(breaks=cut(.$sl_,c(0,1,10,30,50,100,max(.$sl)))) %>% 
+  group_by(breaks) %>% 
+  summarise(proportion=n()) %>% 
+  ungroup() %>%
+  mutate(proportion=proportion/tracking.database.unlisted %>% filter(forest27_start=="matrix") %>% nrow()) %>% 
+  ggplot(aes(x=breaks,y=proportion)) +
+  geom_col() +
+  xlab("Step length (m)") +
+  ylab("Proportion") +
+  ggtitle("Matrix")
+
+
+
+##Proportion of steps by step lenght in forest
+forest<-tracking.database.unlisted %>% 
+  filter(forest27_start=="forest") %>% 
+  mutate(breaks=cut(.$sl_,c(0,1,10,30,50,100,max(.$sl)))) %>% 
+  group_by(breaks) %>% 
+  summarise(proportion=n()) %>% 
+  ungroup() %>%
+  mutate(proportion=proportion/tracking.database.unlisted %>% filter(forest27_start=="forest") %>% nrow()) %>% 
+  ggplot(aes(x=breaks,y=proportion)) +
+  geom_col() +
+  xlab("Step length (m)") +
+  ylab("Proportion") +
+  ggtitle("Forest")
+
+#Combine graphs
+ggarrange(matrix,forest,ncol = 2, nrow = 1)
+
+#Boxplot of log step length by vegetation cover
+tracking.database.unlisted %>% 
+  ggplot(aes(x=forest27_start,y=log_sl_)) +
+  geom_boxplot() +
+  xlab("Vegetal cover") +
+  ylab("Log step length")
+ggsave("Graphs/Step length by vegetal cover.jpg")
+
+
+#Wilcoxon test for differences in step length by vegetal cover
+wilcox.test(tracking.database.unlisted %>% select(forest27_start,sl_) %>% filter(forest27_start=="matrix") %>% select(sl_) %>% .$sl_,tracking.database.unlisted %>% select(forest27_start,sl_) %>% filter(forest27_start=="forest") %>% select(sl_) %>% .$sl_)
+
+rm(counts,counts.matrix,matrix,forest)
+
+
+```
+
+
+```{r,purl=FALSE}
 #Turning angle by bird
 tracking.database.unlisted %>% 
   mutate(id=as.factor(id)) %>% 
@@ -252,9 +354,101 @@ tracking.database.unlisted %>%
   geom_hline(yintercept=c(-180,180),linetype="dashed")
 #ggsave("Graphs/Turning angle by bird.jpg")
 
-##**CONTINUE HERE. FOR THE RESULTS, I CAN DO A DENSITY PLOT OF THE TURNING ANGLE AND STEP LENGHT
+#Histogram of turning angle of all birds
+tracking.database.unlisted %>% 
+  ggplot(aes(x=ta_)) +
+  geom_histogram() +
+  xlab("Bird id") +
+  ylab("Turning angle")
+
+#Histogram of turning angle of all birds but without a 0 angle
+tracking.database.unlisted %>% 
+  filter(ta_!=0) %>% 
+  ggplot(aes(x=ta_)) +
+  geom_histogram() +
+  xlab("Bird id") +
+  ylab("Turning angle")
  
-rm(counts,counts.matrix)
+#Histogram of turning angle of all birds by vegetal cover
+tracking.database.unlisted %>% 
+  ggplot(aes(x=ta_)) +
+  geom_histogram() +
+  xlab("Bird id") +
+  ylab("Turning angle") +
+  facet_wrap(~forest27_start,scales="free")
+
+#Histogram of turning angle of all birds by vegetal cover but without 0 turning angle
+tracking.database.unlisted %>% 
+  filter(ta_!=0) %>% 
+  ggplot(aes(x=ta_)) +
+  geom_histogram() +
+  xlab("Bird id") +
+  ylab("Turning angle") +
+  facet_wrap(~forest27_start,scales="free")
+
+borrar <- tracking.database.unlisted %>% 
+  mutate(ta_=if_else(ta_<0,ta_+360,ta_)) %>% 
+  #mutate(breaks=cut(.$ta_,seq(from=-180,to=180,by=10))) %>%
+  mutate(breaks=as.character(cut(.$ta_,seq(from=0,to=360,by=10))))
+
+borrar$breaks <- ifelse(is.na(borrar$breaks)==TRUE,0,borrar$breaks)
+
+
+#Graph with 0 angle included
+borrar %>%
+  ggplot(aes(x=breaks)) +
+  geom_histogram(stat="count")+
+  coord_polar()
+
+#Graph with 0 angle included by vegetal cover
+borrar %>%
+  ggplot(aes(x=breaks)) +
+  geom_histogram(stat="count")+
+  coord_polar() +
+  facet_wrap(~forest27_start)
+
+#Graph without 0 angle 
+borrar %>% 
+  filter(breaks!="0")%>%
+  ggplot(aes(x=breaks)) +
+  geom_histogram(stat="count")+
+  coord_polar() +
+  facet_wrap(~forest27_start)
+
+
+#Statistics for tunring angle
+summary(borrar$ta_)
+tapply(borrar$ta_,borrar$forest27_start,summary)
+
+#Wilcoxon test for differences in turning angle by vegetal cover
+wilcox.test(tracking.database.unlisted %>% select(forest27_start,ta_) %>% filter(forest27_start=="matrix") %>% select(ta_) %>% .$ta_,tracking.database.unlisted %>% select(forest27_start,ta_) %>% filter(forest27_start=="forest") %>% select(ta_) %>% .$ta_)
+
+#Boxplot of turning angles without 0
+tracking.database.unlisted %>% 
+  filter(ta_!=0) %>% 
+  ggplot(aes(x=forest27_start,y=ta_)) +
+  geom_boxplot()
+
+#T. test for differences in turning angle by vegetal cover
+t.test(tracking.database.unlisted %>% select(forest27_start,ta_) %>% filter(forest27_start=="matrix") %>% select(ta_) %>% filter(ta_!=0) %>% .$ta_,tracking.database.unlisted %>% select(forest27_start,ta_) %>% filter(forest27_start=="forest") %>% select(ta_) %>% filter(ta_!=0) %>% .$ta_)
+
+rm(borrar)
+```
+
+
+```{r}
+#Graph of turning angle vs step length
+tracking.database.unlisted %>%
+  ggplot(aes(y=log_sl_,x=ta_)) +
+  geom_point() + 
+  geom_smooth()
+
+tracking.database.unlisted %>%
+  filter(ta_==0) %>% 
+  ggplot(aes(y=log_sl_)) +
+  geom_boxplot() + 
+  facet_wrap(~forest27_start)
+
 ```
 
 #LM for differences between step length in patches
@@ -305,7 +499,7 @@ tracking.database.unlisted %>%
 #m2 <- m2 %>% mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + sl_  + log_sl_:forest27_end + sl_:forest27_end + strata(step_id_))))
 
 condensed.dataframe.subset <- condensed.dataframe.subset %>% 
-  mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + ta_  + log_sl_:forest27_end + ta_:forest27_end + strata(step_id_))))
+  mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + cos(ta_)  + log_sl_:forest27_end + cos(ta_):forest27_end + strata(step_id_))))
 ```
 
 
@@ -407,9 +601,9 @@ select(id, coef) %>% unnest %>%
 mutate(id = factor(id),
        term=if_else(term=="forest27_endforest","Habitat selection",term),
        term=if_else(term=="log_sl_","Log step length",term),
-       term=if_else(term=="ta_","Turning angle",term),
+       term=if_else(term=="cos(ta_)","Turning angle",term),
        term=if_else(term=="forest27_endforest:log_sl_","Log step length by habitat",term),
-       term=if_else(term=="forest27_endforest:ta_","Turning angle by habitat",term)) %>% group_by(term) %>%
+       term=if_else(term=="forest27_endforest:cos(ta_)","Turning angle by habitat",term)) %>% group_by(term) %>%
 summarize(
 mean = mean(estimate),
 ymin = mean - 1.96 * sd(estimate),
@@ -423,11 +617,12 @@ mutate(id = factor(id)) #filter(conf.low!=-Inf)  %>% #I added this line since th
 
 #Plot small version of the plot
 data %>% 
+  #filter(id!=973) %>% 
   mutate(term=if_else(term=="forest27_endforest","Habitat selection",term),
          term=if_else(term=="log_sl_","Log step length",term),
-         term=if_else(term=="ta_","Turning angle",term),
+         term=if_else(term=="cos(ta_)","Turning angle",term),
          term=if_else(term=="forest27_endforest:log_sl_","Log step length by habitat",term),
-         term=if_else(term=="forest27_endforest:ta_","Turning angle by habitat",term)) %>% 
+         term=if_else(term=="forest27_endforest:cos(ta_)","Turning angle by habitat",term)) %>% 
   ggplot(., aes(x = term, y = estimate, group = id, col = id)) +
 # geom_rect(mapping = aes(xmin = x - .4, xmax = x + .4, ymin = ymin,
 # ymax = ymax, y = mean), data = d2 %>% mutate(x = as.numeric(x)), inherit.aes = FALSE,
@@ -439,13 +634,14 @@ size = 1) +
 geom_hline(yintercept = 0, lty = 2) +
 labs(x = "Parameters", y = "Relative Selection Strength") +
 theme_light() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
     #+
 #scale_x_discrete(labels = c("Developed (open)", "Developed (other)", "Natural", "Crops","Other","Step length"))
 #p1
 #ggsave("img/fig_all_animals.pdf", width = 24, height = 12, units = "cm")
 #ggsave("fig_all_animals_parameters_luis.pdf", width = 24, height = 12, units = "cm")
-#ggsave("Graphs/Multi bird parameters.jpg")
+ggsave("Graphs/Multi bird parameters.jpg")
 
 
 
@@ -453,16 +649,18 @@ theme_light() +
 data %>%
   mutate(term=if_else(term=="forest27_endforest","Habitat selection",term),
          term=if_else(term=="log_sl_","Log step length",term),
-         term=if_else(term=="ta_","Turning angle",term),
+         term=if_else(term=="cos(ta_)","Turning angle",term),
          term=if_else(term=="forest27_endforest:log_sl_","Log step length by habitat",term),
-         term=if_else(term=="forest27_endforest:ta_","Turning angle by habitat",term)) %>% 
+         term=if_else(term=="forest27_endforest:cos(ta_)","Turning angle by habitat",term)) %>% 
   ggplot(aes(x=estimate)) + 
   geom_histogram(aes(y=..density..),colour="black", fill="white") +
   geom_density(alpha=.2, fill="#FF6666") +
   facet_wrap(~term,scales="free")
   
+tapply(data$estimate,data$term,summary)
+tapply(data$estimate,data$term,sd)
 
-rm(graph.parameters.database)
+#rm(graph.parameters.database)
 ```
 
 
@@ -473,7 +671,7 @@ Run replicate simulations:
 source("SSF simulation functions all birds.R")
 
 #Set up the number of simulations per patch and also number of simulations per starting point
-num.sim.points.per.patch<-50
+num.sim.points.per.patch<-100
 num.sim.per.point<-1
 
 #Make a list of the
@@ -625,6 +823,7 @@ results.simulations.dispersal.distance.df %>%
 
 
 #Model without random structure
+#library("nlme")
 summary(mod.1<-gls(dispersal.distance ~param.shape.step.length + param.habitat.utilization + time,method = "REML", data = results.simulations.dispersal.distance.df))
 
 
