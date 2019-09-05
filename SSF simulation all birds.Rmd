@@ -590,6 +590,66 @@ for (i in 1:length(forest.raster.cropped)){
 
 rm(structure)
 ```
+```{r}
+
+#pgamma with original shape and scale parameters per bird
+for (i in 1:nrow(parameters.simulations)){
+plot(c(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_)), pgamma(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_), shape = parameters.simulations[i,"shape.step.length"], scale = parameters.simulations[i,"scale.step.length"]), type = "l",col=i,ylim=c(0,1),xlab="Dispersal distance (m)",ylab="Probability")
+
+ifelse(i==nrow(parameters.simulations),par(new=FALSE),par(new=TRUE))
+}
+
+
+
+#pgamma modifying the shape paramater by a certain value
+
+jpeg("Graphs/Gamma distribution modification shape parameter.jpg",quality=100,width=1000,height=700)
+par(mfrow=c(2,2))
+
+#Generate a vector that will increase the shape parameter by a certain value
+increase.shape<-1:4
+
+for (k in increase.shape){
+
+for (i in 1:nrow(parameters.simulations)){
+plot(c(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_)), pgamma(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_), shape = parameters.simulations[i,"shape.step.length"]*k, scale = parameters.simulations[i,"scale.step.length"]), type = "l",col=i,ylim=c(0,1),xlab="Dispersal distance (m)",ylab="Probability",main=paste("Original shape parameter *",k))
+
+ifelse(i==nrow(parameters.simulations),par(new=FALSE),par(new=TRUE))
+}
+}
+
+dev.off()
+
+#Boxplot of values of the shape parameter
+parameters.simulations %>% 
+  ggplot(aes(y=shape.step.length)) +
+  geom_boxplot()
+
+#Summary of values of the shape parameter
+summary(parameters.simulations$shape.step.length)
+
+
+##Generate a data frame that will increase the shape parameter by a certain value
+increase.shape<-data.frame(increase=1:4)
+
+#Obtain the mean of the shape parameter and increase it by a certain value
+increase.shape$shape.parameter <- mean(parameters.simulations$shape.step.length)*increase.shape$increase
+
+#Use the mean of the scale parameter
+increase.shape$scale.parameter <- mean(parameters.simulations$scale.step.length)
+
+jpeg("Graphs/Gamma distribution modification mean shape parameter.jpg",quality=100,width=1000,height=700)
+for (i in 1:nrow(increase.shape)){
+plot(c(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_)), pgamma(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_), shape = increase.shape[i,"shape.parameter"]*k, scale = increase.shape[i,"scale.parameter"]), type = "l",col=i,ylim=c(0,1),xlab="Dispersal distance (m)",ylab="Probability",main="Modification of mean shape parameter")
+  
+  ifelse(i==nrow(increase.shape),par(new=FALSE),par(new=TRUE))
+}
+
+legend("bottomright",legend=increase.shape$increase,col=1:length(increase.shape),lty=1)
+
+dev.off()
+```
+
 
 ### Plot
 
@@ -615,9 +675,13 @@ data <- condensed.dataframe.subset %>% mutate(coef = map(fit, ~ broom::tidy(.x$m
 select(id, coef) %>% unnest %>% 
 mutate(id = factor(id)) #filter(conf.low!=-Inf)  %>% #I added this line since there are -inf values on the data set 
 
-#Plot small version of the plot
+#Plot small version of the plot. 
+#I THINK THAT THE VALUE OF THE PARAMETERS HAVE THE FOLLOWING MEANING:
+#HABITAT SELECTION: SMALL VALUES MEAN THAT THAT THEY ARE CHOOSING MORE NON-FORESTED POINTS THAN FORESTED.
+#STEP LENGTH:IT IS USING A GAMMA DISTRIBUTION AND IT IS USED TO ADJUST THE SHAPE AND SCALE OF THE DISTRIBUTION. I THINK I WOULD MODIFY THE SHAPE, SINCE LOW VALUES MAKE A RIGHT SKEWED DISTRIBUTION (SMALL STEP LENGTHS AND RARE LONG STEP LENGHTS) AND HIGH VALUES MAKE THE DISTRIBUTION SHIFT TO THE LEFT (LONGER STEP LENGTHS ARE MORE FREQUENT)
+#TURNING ANGLE: IT USES A VON-MISES DISTRIBUTION. LOW VALUES MAKE A MORE UNIFORM DISTRIBUTION, WHILE HIGH VALUES CONCENTRATE THE DISTRIBUTION ON THE 0 ANGLE. 
 data %>% 
-  #filter(id!=973) %>% 
+  filter(id!=973) %>% 
   mutate(term=if_else(term=="forest27_endforest","Habitat selection",term),
          term=if_else(term=="log_sl_","Log step length",term),
          term=if_else(term=="cos(ta_)","Turning angle",term),
@@ -756,10 +820,19 @@ stopImplicitCluster()
 
 ```{r}
 #Obtain data base with values aggregated by time and showing the proportion of fruit in each faith by time. ###***I DO NOT KNOW WELL HOW AM I GOING TO DO THIS ANALYSIS, SO I DO NOT KNOW WELL THE STRUCTURE OF THE DATA BASE. sPECIFICALLY, I DO NOT KNOW IF I HAVE TO INCLUDE THE PARAMETERS VALUES
-final.database(name.input.database=results.simulations.df,name.output.dataframe=results.emigration)
 
-
+results.emigration <- final.database(name.input.database=results.simulations.df,
+               name.output.dataframe=results.emigration) %>% 
+  filter(time==20 | time==40 | time==60) #Subsetting the times that I am interested
 ```
+
+```{r}
+#Anaylsis of the porportion of fruits in the landscape
+results.emigration %>% 
+  select(-c(focal.patch,matrix,new.patch,same.patch)) %>% 
+  ggpairs(upper=list(continuous="smooth"),lower=list(continuous="cor"))
+```
+
 
 ```{r}
 ##Obtain the dispersal distance for each fix rate
@@ -816,23 +889,58 @@ dispersal.distance(#focal.patch=focal.patch,
 
 ```{r,purl=FALSE}
 #ANALYZE PARAMETERS VERSUS DISPERSAL DISTANCE
-#dispersal.distance~param.shape.step.length + para.habitat.utilization + time
+
+#Summary of dispersal distance
+summary(results.simulations.dispersal.distance.df$dispersal.distance)
+
+#Boxplot of dispersal distance
 results.simulations.dispersal.distance.df %>% 
+  ggplot(aes(y=dispersal.distance)) +
+  geom_boxplot()
+
+#Make a data frame with log dispersal distance in long format
+borrar <- results.simulations.dispersal.distance.df %>%
+  select(same.patch,matrix,new.patch,dispersal.distance) %>% 
+    mutate(log.dispersal.distance=log(dispersal.distance+1)) %>% 
+  gather(fate,yes,same.patch:new.patch) %>% 
+  filter(yes==1)
+
+#Boxplot of seed dispersal distance by fate
+borrar %>% 
+  ggplot(aes(y=dispersal.distance)) +
+  geom_boxplot() +
+  facet_wrap(~fate)
+
+#Boxplot of log seed dispersal distance by fate
+borrar %>% 
+  ggplot(aes(y=log.dispersal.distance)) +
+  geom_boxplot() +
+  facet_wrap(~fate)
+
+#Summary of seed dispersal distance by fate
+summary(borrar$dispersal.distance)
+tapply(borrar$dispersal.distance,borrar$fate,summary)
+
+#Pair plot of seed dispersal distance only if it landed on forest
+results.simulations.dispersal.distance.df %>% 
+  filter(same.patch==1 | new.patch==1) %>% #This only considers seed dispersal to places where it is likely that it will germinate
   select(dispersal.distance,param.shape.step.length,param.habitat.utilization,time) %>%
   ggpairs(upper=list(continuous="smooth"),lower=list(continuous="cor"))
 
 
 #Model without random structure
 #library("nlme")
-summary(mod.1<-gls(dispersal.distance ~param.shape.step.length + param.habitat.utilization + time,method = "REML", data = results.simulations.dispersal.distance.df))
+summary(mod.1<-gls(dispersal.distance ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time),method = "REML", data = results.simulations.dispersal.distance.df %>% 
+  filter(same.patch==1 | new.patch==1)))
 
 
 #GLMM nesting frequency
-summary(mod.2<-lme(dispersal.distance ~param.shape.step.length + param.habitat.utilization + time,random = ~1 | id.simulation,data=results.simulations.dispersal.distance.df,method="REML"))
+summary(mod.2<-lme(dispersal.distance ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time),random = ~1 | id.simulation,data=results.simulations.dispersal.distance.df %>% 
+  filter(same.patch==1 | new.patch==1),method="REML"))
 
 #Continue with LMM
 #Without habitat utilization
-summary(mod.3 <- update(mod.2,.~. -param.habitat.utilization))
+summary(mod.3 <- update(mod.2,.~. -scale(param.habitat.utilization)))
 
 #Without step length
 summary(mod.4 <- update(mod.3,.~. -param.shape.step.length))
