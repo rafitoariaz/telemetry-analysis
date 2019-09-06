@@ -642,6 +642,7 @@ rm(structure)
 
 
 ```{r}
+jpeg("Graphs/Gamma distribution of shape parameter.jpg",quality=100,width=1000,height=700)
 
 #pgamma with original shape and scale parameters per bird
 for (i in 1:nrow(parameters.simulations)){
@@ -650,55 +651,9 @@ plot(c(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_)),
 ifelse(i==nrow(parameters.simulations),par(new=FALSE),par(new=TRUE))
 }
 
-
-
-#pgamma modifying the shape paramater by a certain value
-
-jpeg("Graphs/Gamma distribution modification shape parameter.jpg",quality=100,width=1000,height=700)
-par(mfrow=c(2,2))
-
-#Generate a vector that will increase the shape parameter by a certain value
-increase.shape<-1:4
-
-for (k in increase.shape){
-
-for (i in 1:nrow(parameters.simulations)){
-plot(c(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_)), pgamma(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_), shape = parameters.simulations[i,"shape.step.length"]*k, scale = parameters.simulations[i,"scale.step.length"]), type = "l",col=i,ylim=c(0,1),xlab="Dispersal distance (m)",ylab="Probability",main=paste("Original shape parameter *",k))
-
-ifelse(i==nrow(parameters.simulations),par(new=FALSE),par(new=TRUE))
-}
-}
-
 dev.off()
 
-#Boxplot of values of the shape parameter
-parameters.simulations %>% 
-  ggplot(aes(y=shape.step.length)) +
-  geom_boxplot()
 
-#Summary of values of the shape parameter
-summary(parameters.simulations$shape.step.length)
-
-
-##Generate a data frame that will increase the shape parameter by a certain value
-increase.shape<-data.frame(increase=1:4)
-
-#Obtain the mean of the shape parameter and increase it by a certain value
-increase.shape$shape.parameter <- mean(parameters.simulations$shape.step.length)*increase.shape$increase
-
-#Use the mean of the scale parameter
-increase.shape$scale.parameter <- mean(parameters.simulations$scale.step.length)
-
-jpeg("Graphs/Gamma distribution modification mean shape parameter.jpg",quality=100,width=1000,height=700)
-for (i in 1:nrow(increase.shape)){
-plot(c(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_)), pgamma(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_), shape = increase.shape[i,"shape.parameter"]*k, scale = increase.shape[i,"scale.parameter"]), type = "l",col=i,ylim=c(0,1),xlab="Dispersal distance (m)",ylab="Probability",main="Modification of mean shape parameter")
-  
-  ifelse(i==nrow(increase.shape),par(new=FALSE),par(new=TRUE))
-}
-
-legend("bottomright",legend=increase.shape$increase,col=1:length(increase.shape),lty=1)
-
-dev.off()
 ```
 
 
