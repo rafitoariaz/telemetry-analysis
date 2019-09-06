@@ -137,18 +137,10 @@ condensed.dataframe.subset<-subset(condensed.dataframe,condensed.dataframe$id==2
                   condensed.dataframe$id==881 |
                   condensed.dataframe$id==973 |
                   condensed.dataframe$id==392 |
-                  condensed.dataframe$id==202) 
+                  condensed.dataframe$id==202)
+                    
 
-#dat_all_original$id==472
-#dat_all_original$id==910
-#dat_all_original$id==821
-#dat_all_original$id==791
-#dat_all_original$id==702
-#dat_all_original$id==672
-#dat_all_original$id==631
-#dat_all_original$id==591                 
-#dat_all_original$id==273) #Just added this one
-#dat_all_original$id==432) #Just added this one
+
 #432 only moved in forested area, so the interaction terms of step length and habitat selection between habitats is not working since there are no steps in the matrix
 #273 has only 4 movments in the forest, so the interaction is not working
 #591 only moved in MATRIX area, so the interaction terms of step length and habitat selection between habitats is not working since there are no steps in the FOREST
@@ -159,6 +151,17 @@ condensed.dataframe.subset<-subset(condensed.dataframe,condensed.dataframe$id==2
 #821 MOSTLY moved in forest area, so the interaction terms of step length and habitat selection between habitats is not working since there IS 0 step in the matrix
 #910 MOSTLY moved in MATRIX area, so the interaction terms of step length and habitat selection between habitats is not working since there IS 0 step in the FOREST
 #472 is giving me a very unsual value of the parameter and I do not know why
+condensed.dataframe.subset.remaining<-subset(condensed.dataframe,condensed.dataframe$id==472 |
+                    condensed.dataframe$id==910 |
+                    condensed.dataframe$id==821 |
+                    condensed.dataframe$id==791 |
+                    condensed.dataframe$id==702 |
+                    condensed.dataframe$id==672 |
+                    condensed.dataframe$id==631 |
+                    condensed.dataframe$id==591 |
+                    condensed.dataframe$id==273 |
+                    condensed.dataframe$id==432 ) 
+
 
 #273, 352,511 472, 591, 672, 702, 791, 821, 973, 202 cannot fit model
 #312, 171,731, 760, 392, 631, 851 give NA or INF values on estimate or confidence intervals
@@ -167,6 +170,11 @@ condensed.dataframe.subset<-subset(condensed.dataframe,condensed.dataframe$id==2
 ```{r}
 #Make a track for each individual
 condensed.dataframe.subset <- condensed.dataframe.subset %>%
+mutate(trk = lapply(data, function(d) {
+mk_track(d, x, y, t )
+}))
+
+condensed.dataframe.subset.remaining <- condensed.dataframe.subset.remaining %>%
 mutate(trk = lapply(data, function(d) {
 mk_track(d, x, y, t )
 }))
@@ -182,6 +190,9 @@ mk_track(d, x, y, t )
 #Summarize sampling rate of all individuals
 condensed.dataframe.subset %>% mutate(sr = lapply(trk, summarize_sampling_rate)) %>%
 select(id, sr) %>% unnest
+
+condensed.dataframe.subset.remaining %>% mutate(sr = lapply(trk, summarize_sampling_rate)) %>%
+select(id, sr) %>% unnest
 ```
 
 #Make tracks
@@ -189,6 +200,20 @@ select(id, sr) %>% unnest
 
 
 condensed.dataframe.subset <- condensed.dataframe.subset %>% mutate(ssf = lapply(trk, function(x) {
+x %>% 
+    track_resample(rate = minutes(5), tolerance = minutes(2)) %>% #A track will be considered if the two consecutive GPS points are separated by 5 minutes +- 2 minutes of tolerance
+    filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
+    steps_by_burst() %>% #Converts the points to tracks
+    random_steps() %>% #Makes 9 random steps
+    extract_covariates(land_use_raster, where = "both") %>% #Extracts covariates of vegetation on initial and ending location. In "amt tutorial.pdf" it explains the following: covariate values at the start and the end of a step can also be included in the model as interaction with each other, to test hypotheses of the type: Are animals more likely to stay in a given habitat, if they are already in the habitat?
+    mutate(forest27_start = factor(forest27_start, levels = c(0, 1), labels = c("matrix", "forest"))) %>% #factor (forest27_start you have to check the name of the column of the data base that is generated one step before (in this case is forest27_start). Just run the 2 precedent pipe lines and a tibble with the names of the column will appeaar)
+    mutate(forest27_end = factor(forest27_end, levels = c(0, 1), labels = c("matrix", "forest"))) %>% 
+    mutate(log_sl_ = log(sl_)) #Obtain logarithm of step lenght
+}))
+
+
+
+condensed.dataframe.subset.remaining <- condensed.dataframe.subset.remaining %>% mutate(ssf = lapply(trk, function(x) {
 x %>% 
     track_resample(rate = minutes(5), tolerance = minutes(2)) %>% #A track will be considered if the two consecutive GPS points are separated by 5 minutes +- 2 minutes of tolerance
     filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
@@ -500,6 +525,11 @@ tracking.database.unlisted %>%
 
 condensed.dataframe.subset <- condensed.dataframe.subset %>% 
   mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + cos(ta_)  + log_sl_:forest27_end + cos(ta_):forest27_end + strata(step_id_))))
+
+
+#I cannot run row 1, 4,6,8,9,10
+condensed.dataframe.subset.remaining <- condensed.dataframe.subset.remaining[c(2,3,5,7),] %>% 
+  mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + cos(ta_) + strata(step_id_))))
 ```
 
 
@@ -524,6 +554,25 @@ for (i in 1:nrow(condensed.dataframe.subset)) {
 #parameters.simulations<-split(parameters.simulations,parameters.simulations$num.simulation)
 
 
+
+
+
+#Make a data base with the values of each parameter. REMAINING
+parameters.simulations.remaining <- data.frame(id.simulation=Vi$id) #*** IN THIS LINE I WOULD PUT THE NUMBER OF SIMULATIONS I WOULD LIKE TO DO, BUT NO I AM PUTTING THE ID OF THE BIRD SINCE EACH ONE HAS A SPECIFIC PARAMTER
+
+for (i in 1:nrow(condensed.dataframe.subset.remaining)) {
+  
+  parameters.simulations.remaining$shape.step.length[[i]] <- sl_shape(condensed.dataframe.subset.remaining$fit[[i]])  #It uses a gamma distribution for step length. I think this is the mean. ***Understand why are they using a gamma distribution. HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE GAMMA DISTRIBUTION I WOULD LIKE TO SIMULATE
+  
+  parameters.simulations.remaining$scale.step.length[[i]] <- sl_scale(condensed.dataframe.subset.remaining$fit[[i]]) #It uses a gamma distribution for step length. I think this is the scale, which is part of what will determine the distribution ***Understand why are they using a gamma distribution. HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE GAMMA DISTRIBUTION I WOULD LIKE TO SIMULATE
+
+  
+  parameters.simulations.remaining$habitat.utilization[[i]] <- coef(condensed.dataframe.subset.remaining$fit[[i]])["forest27_endforest"] #***HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE HABITAT SELECTION COEFFICIENT I WOULD LIKE TO SIMULATE
+  
+}
+
+
+parameters.simulations <- rbind(parameters.simulations,parameters.simulations.remaining)
 
 
 #This chunk is for obtaining the coordinates of the focal patch from Adam's data base and then figuring out the patch id in the croppped labeled map. ***MAYBE HERE I CAN CREATE A DATA BASE WITH THE XY COORDINATES OF THE PATCHES WHERE I WOULD LIKE TO DO THE SIMULATIONS
@@ -590,6 +639,8 @@ for (i in 1:length(forest.raster.cropped)){
 
 rm(structure)
 ```
+
+
 ```{r}
 
 #pgamma with original shape and scale parameters per bird
@@ -649,6 +700,8 @@ legend("bottomright",legend=increase.shape$increase,col=1:length(increase.shape)
 
 dev.off()
 ```
+
+
 
 
 ### Plot
@@ -720,9 +773,16 @@ data %>%
   geom_histogram(aes(y=..density..),colour="black", fill="white") +
   geom_density(alpha=.2, fill="#FF6666") +
   facet_wrap(~term,scales="free")
+ggsave("Graphs/Multi bird density plot parameters.jpg")
   
 tapply(data$estimate,data$term,summary)
 tapply(data$estimate,data$term,sd)
+
+#Summary of habitat selection parameter without the outlier
+data %>% 
+  filter(term=="forest27_endforest" & estimate>min(estimate)) %>% 
+  select(estimate) %>% 
+  summary()
 
 #rm(graph.parameters.database)
 ```
