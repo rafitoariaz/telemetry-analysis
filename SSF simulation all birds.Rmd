@@ -444,6 +444,7 @@ borrar %>%
 #Statistics for tunring angle
 summary(borrar$ta_)
 tapply(borrar$ta_,borrar$forest27_start,summary)
+tapply(borrar %>% filter(ta_>0) %>% .$ta_, borrar %>% filter(ta_>0) %>% .$forest27_start,summary)
 
 #Wilcoxon test for differences in turning angle by vegetal cover
 wilcox.test(tracking.database.unlisted %>% select(forest27_start,ta_) %>% filter(forest27_start=="matrix") %>% select(ta_) %>% .$ta_,tracking.database.unlisted %>% select(forest27_start,ta_) %>% filter(forest27_start=="forest") %>% select(ta_) %>% .$ta_)
@@ -454,8 +455,8 @@ tracking.database.unlisted %>%
   ggplot(aes(x=forest27_start,y=ta_)) +
   geom_boxplot()
 
-#T. test for differences in turning angle by vegetal cover
-t.test(tracking.database.unlisted %>% select(forest27_start,ta_) %>% filter(forest27_start=="matrix") %>% select(ta_) %>% filter(ta_!=0) %>% .$ta_,tracking.database.unlisted %>% select(forest27_start,ta_) %>% filter(forest27_start=="forest") %>% select(ta_) %>% filter(ta_!=0) %>% .$ta_)
+#T. test for differences in turning angle by vegetal cover without step length > 1
+t.test(tracking.database.unlisted %>% filter(sl_>1) %>%  select(forest27_start,ta_) %>% filter(forest27_start=="matrix") %>% select(ta_) %>% .$ta_,tracking.database.unlisted %>% filter(sl_>1) %>% select(forest27_start,ta_) %>% filter(forest27_start=="forest") %>% select(ta_) %>% .$ta_)
 
 
 library("circular")
@@ -552,6 +553,12 @@ rm(borrar)
 ```{r}
 #Graph of turning angle vs step length
 tracking.database.unlisted %>%
+  ggplot(aes(y=log_sl_,x=ta_)) +
+  geom_point() + 
+  geom_smooth()
+
+tracking.database.unlisted %>%
+  filter(sl_>0) %>% 
   ggplot(aes(y=log_sl_,x=ta_)) +
   geom_point() + 
   geom_smooth()
@@ -756,10 +763,19 @@ scale.parameter.modification <- parameters.simulations %>%
          median=median(scale.step.length),
          upper=quantile(scale.step.length,probs=0.95))
 
+scale.parameter.modification %>% 
+  filter(scale.step.length<200) %>% 
+  ggplot(aes(y=scale.step.length)) +
+  geom_boxplot()
+
+scale.parameter.modification %>% 
+  filter(scale.step.length<200) %>% 
+  summary()
+
 par(mfrow=c(2,2))
 for(k in (ncol(scale.parameter.modification)-3):ncol(scale.parameter.modification)){
 for (i in 1:nrow(scale.parameter.modification)){
-plot(c(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_)), pgamma(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_), shape = scale.parameter.modification[i,k], scale = scale.parameter.modification[i,k]), type = "l",col=i,ylim=c(0,1),xlab="Dispersal distance (m)",ylab="Probability",main=names(scale.parameter.modification[k]))
+plot(c(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_)), pgamma(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_), shape = scale.parameter.modification[i,"shape.step.length"], scale = scale.parameter.modification[i,k]), type = "l",col=i,ylim=c(0,1),xlab="Dispersal distance (m)",ylab="Probability",main=names(scale.parameter.modification[k]))
 
 ifelse(i==nrow(parameters.simulations),par(new=FALSE),par(new=TRUE))
 }
@@ -769,9 +785,19 @@ ifelse(i==nrow(parameters.simulations),par(new=FALSE),par(new=TRUE))
 #1.-SEE HOW THE SCALE PARAMETER MODIFIES THE GAMMA DISTRIBUTION
 #2. CHECK WHY SOME INDIVIDUALS I CANNOT FIT A SSF
 #3. MODIFY SSF FUNCTTIONS OF MOVEMENT SIMULATION SO THAT I CAN SIMULATION EVERY COMBINATION OF THE PARAMETERS
-
+rm(scale.parameter.modification)
 ```
 
+```{r}
+#Make data frame that will include all the combinations of the parameters I would like to simulate per patch
+parameters.simulations.model <- data.frame(shape.step.length=quantile(parameters.simulations$shape.step.length,probs=c(0.05,0.5,0.95)),
+             scale.step.length=median(parameters.simulations$scale.step.length),
+             habitat.utilization=quantile(parameters.simulations %>% filter(habitat.utilization>-5) %>% select(habitat.utilization) %>% .$habitat.utilization,probs=c(0.05,0.5,0.95)),
+             regurgitation.time=c(20,40,60)) %>% 
+  expand.grid() %>% #Make all the combinations
+  distinct() #Double check that there are no repeated values
+
+```
 
 
 
