@@ -22,6 +22,7 @@ simulate.movement<-function(focal.patch=NA,
                             map.full=NA,
                             map.cropped=NA,
                             map.cropped.labeled=NA,
+                            landscape.variables=NA,
                             name.output.list=NA){
   
   #time.location.regurgitation<<-as.list(focal.patch)
@@ -45,7 +46,10 @@ simulate.movement<-function(focal.patch=NA,
                         patch.emigrated=0,
                         same.patch=0,
                         matrix=0,
-                        new.patch=0) #value of the raster (type of vegetation)
+                        new.patch=0,#value of the raster (type of vegetation)
+                        patch.size=0,###ADDED THIS CODE
+                        percent.forest=0,
+                        elevation=0) 
   
   for (q in 1:nrow(parameters.simulations)){
     
@@ -53,6 +57,12 @@ simulate.movement<-function(focal.patch=NA,
     one.sim$param.shape.step.length=parameters.simulations$shape.step.length[[q]]
     one.sim$param.scale.step.length=parameters.simulations$scale.step.length[[q]]
     one.sim$param.habitat.utilization=parameters.simulations$habitat.utilization[[q]]
+    
+    #ADDED THIS CODE
+    one.sim$patch.size<-landscape.variables$patch_size
+    one.sim$percent.forest<-landscape.variables$percent_forest
+    one.sim$elevation<-landscape.variables$elevation
+    
     
     
     #Store movment kernel
@@ -186,6 +196,11 @@ simulate.movement<-function(focal.patch=NA,
               #Here I am correcting for the fact that if it landed in the focal patch, then it will register too that it landed in a new patch. 
               #So I am stating that if it immigrated then put a 0 on new patch
               time.location.regurgitation[[q]][[z]][[g]][[l]]$new.patch<<-ifelse(time.location.regurgitation[[q]][[z]][[g]][[l]]$immigrated==1,0,time.location.regurgitation[[q]][[z]][[g]][[l]]$new.patch)
+              
+              ###ADDED THIS CODE
+              #time.location.regurgitation[[q]][[z]][[g]][[l]]$patch.size<<-landscape.variables$patch_size
+              #time.location.regurgitation[[q]][[z]][[g]][[l]]$percent.forest<<-landscape.variables$percent_forest
+              #time.location.regurgitation[[q]][[z]][[g]][[l]]$elevation<<-landscape.variables$elevation
               
             }
             
