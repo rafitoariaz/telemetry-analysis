@@ -728,7 +728,12 @@ for (i in 1:length(forest.raster.cropped)){
   #Obtain the cell number from the xy cordinate from the cropped raster map. ***I HAVE THE CORRECT VALUES OF THE RASTERS, I ONLY NEED TO MODIFY THE CODE SO THAT IT WORKS WITH THIS MODIFICATION
   forest.raster.cropped[[i]]$focal.patch.label.cropped <- forest.raster.cropped[[i]]$forest.raster.cropped.labeled[cellFromXY (forest.raster.cropped[[i]]$forest.raster.cropped.labeled, forest.raster.cropped[[i]]$focal.patch.xy)]
   
-  
+    ###ADDED THIS CODE
+  forest.raster.cropped[[i]]$landscape.variables <- frequencies.patches %>% 
+    rename("Patch"="PATCH") %>% 
+    inner_join(patches.info,by="Patch") %>% 
+    filter(FREQ==forest.raster.cropped[[i]]$id.freq) %>% 
+    distinct()
   
 }
 
@@ -908,7 +913,7 @@ results.simulations.list <- foreach (i= c(1),#c(1,2,4,9,11,13,14),
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
-                  tot.num.minutes=15,
+                  tot.num.minutes=5,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations.model,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
@@ -916,6 +921,7 @@ simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropp
                   map.full=land_use_raster,
                   map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
                   map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
+                  landscape.variables=forest.raster.cropped[[i]]$landscape.variables,
                   name.output.list=raw.results.emigration) #Remember now that the output data frame is results.simulations.list
 
 
@@ -925,6 +931,9 @@ simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropp
 
 
 stopImplicitCluster()
+
+#The structure of the resulting list is the following:
+#results.simulations.list[[a]]=slot for the simulations
 
 #save.image(file="results.simulations2.RData")
 ```
