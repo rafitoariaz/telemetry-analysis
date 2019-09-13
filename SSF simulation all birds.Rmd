@@ -728,7 +728,7 @@ for (i in 1:length(forest.raster.cropped)){
   #Obtain the cell number from the xy cordinate from the cropped raster map. ***I HAVE THE CORRECT VALUES OF THE RASTERS, I ONLY NEED TO MODIFY THE CODE SO THAT IT WORKS WITH THIS MODIFICATION
   forest.raster.cropped[[i]]$focal.patch.label.cropped <- forest.raster.cropped[[i]]$forest.raster.cropped.labeled[cellFromXY (forest.raster.cropped[[i]]$forest.raster.cropped.labeled, forest.raster.cropped[[i]]$focal.patch.xy)]
   
-    ###ADDED THIS CODE
+    #Add a slot where I will put the environmental variables of the patch where the simulation is going to be made
   forest.raster.cropped[[i]]$landscape.variables <- frequencies.patches %>% 
     rename("Patch"="PATCH") %>% 
     inner_join(patches.info,by="Patch") %>% 
@@ -744,6 +744,7 @@ rm(structure)
 
 
 ```{r}
+#Make graph with shape and scale of gamma distribution of original birds
 jpeg("Graphs/Gamma distribution of shape parameter.jpg",quality=100,width=1000,height=700)
 
 #pgamma with original shape and scale parameters per bird
@@ -755,28 +756,36 @@ ifelse(i==nrow(parameters.simulations),par(new=FALSE),par(new=TRUE))
 
 dev.off()
 
+#See if there is a relationship between shape and scale parameter
 parameters.simulations %>% 
   ggplot(aes(x=shape.step.length,y=scale.step.length)) + 
   geom_point() +
-  geom_smooth()
+  geom_smooth(method="lm")
 
-summary(lm(shape.step.length~scale.step.length,data=parameters.simulations))
+#Model to see if there is a relationship between shape and scale parameter
+summary(mod.1 <- lm(shape.step.length~scale.step.length,data=parameters.simulations))
+
+summary(mod.2<-lme(shape.step.length~scale.step.length,random = ~1 | PATCH,data=parameters.simulations %>% rename("FREQ"="id.simulation") %>%  inner_join(freq.patches,by="FREQ"),method="REML"))
 
 scale.parameter.modification <- parameters.simulations %>% 
-  mutate(original=scale.step.length,
-    lower=quantile(scale.step.length,probs=0.05),
-         median=median(scale.step.length),
-         upper=quantile(scale.step.length,probs=0.95))
+  mutate(scale.original=scale.step.length,
+    scale.lower=quantile(scale.step.length,probs=0.05),
+         scale.median=median(scale.step.length),
+         scale.upper=quantile(scale.step.length,probs=0.95))
+#NO RELATIONSHIP FOUND. 
 
+#Boxplot of scale parameter without including outlier
 scale.parameter.modification %>% 
   filter(scale.step.length<200) %>% 
   ggplot(aes(y=scale.step.length)) +
   geom_boxplot()
 
+#Ummary of scale parameter without including outlier
 scale.parameter.modification %>% 
   filter(scale.step.length<200) %>% 
   summary()
 
+#Graph of scale paramter of original birds but fixing compard with tthe 0.05, 0.5 and 0.95 quantiles of the originial scale
 par(mfrow=c(2,2))
 for(k in (ncol(scale.parameter.modification)-3):ncol(scale.parameter.modification)){
 for (i in 1:nrow(scale.parameter.modification)){
@@ -786,11 +795,11 @@ ifelse(i==nrow(parameters.simulations),par(new=FALSE),par(new=TRUE))
 }
 }
 
+
+
 #TASKS TO DO.
-#1.-SEE HOW THE SCALE PARAMETER MODIFIES THE GAMMA DISTRIBUTION
 #2. CHECK WHY SOME INDIVIDUALS I CANNOT FIT A SSF
-#3. MODIFY SSF FUNCTTIONS OF MOVEMENT SIMULATION SO THAT I CAN SIMULATION EVERY COMBINATION OF THE PARAMETERS
-rm(scale.parameter.modification)
+
 ```
 
 ```{r}
@@ -802,6 +811,28 @@ parameters.simulations.model <- data.frame(shape.step.length=quantile(parameters
   distinct() %>%  #Double check that there are no repeated values
   mutate(id.simulation=1:nrow(.))
 
+
+#Make a data frame with the shape parameters I selected and with different scale parameters (quantiles 0.05,0.5,0.95)
+scale.parameter.modification <- scale.parameter.modification %>% 
+  mutate(shape.step.length.lower.quantile=quantile(parameters.simulations$shape.step.length,probs=0.05),
+         shape.step.length.median=quantile(parameters.simulations$shape.step.length,probs=0.5),
+         shape.step.length.higher.quantile=quantile(parameters.simulations$shape.step.length,probs=0.95)) %>% 
+  select(-c(id.simulation,shape.step.length,scale.step.length,habitat.utilization,scale.original)) %>% 
+  distinct() 
+
+#Graph the different shape parameters I selected for the simulation versus the different scale parameters
+par(mfrow=c(2,2))
+for(k in 4:6){
+for (i in 1:3){
+plot(c(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_)), pgamma(min(tracking.database.unlisted$sl_):max(tracking.database.unlisted$sl_), shape = scale.parameter.modification[,k], scale = scale.parameter.modification[,i]), type = "l",col=i,ylim=c(0,1),xlab="Dispersal distance (m)",ylab="Probability",main=names(scale.parameter.modification[k]))
+
+ifelse(i==3,par(new=FALSE),par(new=TRUE))
+}
+}
+
+#I DO NOT SEE ANY DRASTIC CHANGES, SO i COUL USE THE MEDIAN OF THE SCALE PARAMETER
+
+rm(scale.parameter.modification)
 ```
 
 
@@ -887,6 +918,8 @@ data %>%
   select(estimate) %>% 
   summary()
 
+#Save workspace for simulation
+#save.image("simulation_modelling_workspace.RData")
 #rm(graph.parameters.database)
 ```
 
@@ -894,6 +927,9 @@ data %>%
 Run replicate simulations:
 
 ```{r}
+
+#Load workspace for simulation modelling
+#load("simulation_modelling_workspace.RData")
 #Soruce simulation functions
 source("SSF simulation functions all birds.R")
 
@@ -931,11 +967,14 @@ simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropp
 
 
 stopImplicitCluster()
-
 #The structure of the resulting list is the following:
 #results.simulations.list[[a]]=slot for the simulations
 
 #save.image(file="results.simulations2.RData")
+```
+
+```{r}
+borrar <- dget("results.simulations.list")
 ```
 
 
