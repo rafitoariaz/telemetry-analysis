@@ -49,7 +49,8 @@ simulate.movement<-function(focal.patch=NA,
                         new.patch=0,#value of the raster (type of vegetation)
                         patch.size=0,###ADDED THIS CODE
                         percent.forest=0,
-                        elevation=0) 
+                        elevation=0,
+                        patch.id.adam=0) 
   
   for (q in 1:nrow(parameters.simulations)){
     
@@ -62,6 +63,8 @@ simulate.movement<-function(focal.patch=NA,
     one.sim$patch.size<-landscape.variables$patch_size
     one.sim$percent.forest<-landscape.variables$percent_forest
     one.sim$elevation<-landscape.variables$elevation
+    one.sim$patch.id.adam<-landscape.variables$Patch
+
     
     
     
