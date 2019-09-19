@@ -742,6 +742,20 @@ for (i in 1:length(forest.raster.cropped)){
 rm(structure)
 ```
 
+```{r}
+
+for (i in 1:length(forest.raster.cropped)){
+ 
+  map<-land_use_raster_labeled
+  map[map!=forest.raster.cropped[[i]]$focal.patch.label.complete.map]<-0.5
+  plot(map)
+   
+  
+}
+
+```
+
+
 
 ```{r}
 #Make graph with shape and scale of gamma distribution of original birds
@@ -931,6 +945,7 @@ Run replicate simulations:
 #Load workspace for simulation modelling
 #load("simulation_modelling_workspace.RData")
 #Soruce simulation functions
+#source("SSF_simulation_functions_all_birds.R") #This is when it is in the super computer
 source("SSF simulation functions all birds.R")
 
 #Set up the number of simulations per patch and also number of simulations per starting point
@@ -945,11 +960,12 @@ registerDoParallel(detectCores())
 
 #1,2,4,8,13,15,17,18
 #for (i in 1:nrow(parameters.simulations)){
-results.simulations.list <- foreach (i= c(1),#c(1,2,4,9,11,13,14),
+
+  results.simulations.list <- foreach (i= c(1,2,4,9,11,13,14),
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
-                  tot.num.minutes=5,
+                  tot.num.minutes=30,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations.model,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
@@ -967,19 +983,20 @@ simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropp
 
 
 stopImplicitCluster()
+
 #The structure of the resulting list is the following:
 #results.simulations.list[[a]]=slot for the simulations
 
-#save.image(file="results.simulations2.RData")
+#dput(results.simulations.list,"results.simulations.list")
 ```
 
 ```{r}
-borrar <- dget("results.simulations.list")
+results.simulations.list <- dget("results.simulations.list")
 ```
 
 
 ```{r}
-#Obtain the information from the list in a data base. ####CONTINUE HERE. I THINK THAT THE STRUCTURE OF THE DATA BASE IS DIFFERENT BECAUSE I AM USING A FOREACH LOOP. UNDERSTAND THE NEW STRUCTURE SO THAT I CAN MODIFY THIS CODE. 
+#Obtain the information from the list in a data base. 
 #raw.dataframe(#focal.patch=focal.patch,
  # name.input.database=results.simulations2,
               #name.output.dataframe=raw.formated.results.emigration)
@@ -989,11 +1006,11 @@ borrar <- dget("results.simulations.list")
   #I generated for each simulation (in this case is called results.simulations2). I am using the
   #first element of the list as a molde
   results.simulations.df<-data.frame(matrix(0,
-                                          ncol=ncol(results.simulations.list[[1]][[1]][[1]][[1]]),
+                                          ncol=ncol(results.simulations.list[[1]][[1]][[1]][[1]][[1]]),
                                           nrow=1)) 
   
   #Name columns
-  names(results.simulations.df)<-names(results.simulations.list[[1]][[1]][[1]][[1]])
+  names(results.simulations.df)<-names(results.simulations.list[[1]][[1]][[1]][[1]][[1]])
 
 
   #Paste all data bases
@@ -1001,12 +1018,15 @@ borrar <- dget("results.simulations.list")
     
     for(a in 1:length(results.simulations.list[[z]])){
       
-      for (g in 1:num.sim.points.per.patch){
+      for (g in 1:length(results.simulations.list[[z]][[a]])){
         
-        for(l in 1:num.sim.per.point)
+        for (l in 1:length(results.simulations.list[[z]][[a]][[g]]))
+          
+          for (q in 1:length(results.simulations.list[[z]][[a]][[g]][[l]]))
+            
       {
         
-        df<-results.simulations.list[[z]][[a]][[g]][[l]]
+        df<-results.simulations.list[[z]][[a]][[g]][[l]][[q]]
         
         results.simulations.df<-rbind(df,results.simulations.df)
         
@@ -1035,7 +1055,7 @@ results.emigration <- final.database(name.input.database=results.simulations.df,
 ```{r}
 #Anaylsis of the porportion of fruits in the landscape
 results.emigration %>% 
-  select(-c(focal.patch,matrix,new.patch,same.patch)) %>% 
+  select(-c(focal.patch,patch.id.adam,matrix,new.patch,same.patch)) %>% 
   ggpairs(upper=list(continuous="smooth"),lower=list(continuous="cor"))
 ```
 
@@ -1059,11 +1079,11 @@ dispersal.distance(#focal.patch=focal.patch,
   #I generated for each simulation (in this case is called results.simulations2). I am using the
   #first element of the list as a molde
   results.simulations.dispersal.distance.df<-data.frame(matrix(0,
-                                          ncol=ncol(results.simulations.list[[1]][[1]][[1]][[1]]),
+                                          ncol=ncol(results.simulations.list[[1]][[1]][[1]][[1]][[1]]),
                                           nrow=1)) 
   
   #Name columns
-  names(results.simulations.dispersal.distance.df)<-names(results.simulations.list[[1]][[1]][[1]][[1]])
+  names(results.simulations.dispersal.distance.df)<-names(results.simulations.list[[1]][[1]][[1]][[1]][[1]])
   
 
   #Paste all data bases
@@ -1071,12 +1091,14 @@ dispersal.distance(#focal.patch=focal.patch,
     
     for(a in 1:length(results.simulations.list[[z]])){
       
-      for (g in 1:num.sim.points.per.patch){
+      for (g in 1:length(results.simulations.list[[z]][[a]])){
         
-        for(l in 1:num.sim.per.point)
+        for (l in 1:length(results.simulations.list[[z]][[a]][[g]]))
+          
+          for (q in 1:length(results.simulations.list[[z]][[a]][[g]][[l]]))
       {
         
-        df<-results.simulations.list[[z]][[a]][[g]][[l]]
+        df<-results.simulations.list[[z]][[a]][[g]][[l]][[q]]
         
         results.simulations.dispersal.distance.df<-rbind(df,results.simulations.dispersal.distance.df)
         
