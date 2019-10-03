@@ -49,7 +49,8 @@ simulate.movement<-function(focal.patch=NA,
                         new.patch=0,#value of the raster (type of vegetation)
                         patch.size=0,###ADDED THIS CODE
                         percent.forest=0,
-                        elevation=0) 
+                        elevation=0,
+                        patch.id.adam=0) 
   
   for (q in 1:nrow(parameters.simulations)){
     
@@ -62,6 +63,7 @@ simulate.movement<-function(focal.patch=NA,
     one.sim$patch.size<-landscape.variables$patch_size
     one.sim$percent.forest<-landscape.variables$percent_forest
     one.sim$elevation<-landscape.variables$elevation
+    one.sim$patch.id.adam <- landscape.variables$Patch
     
     
     
@@ -170,7 +172,7 @@ simulate.movement<-function(focal.patch=NA,
             time.location.regurgitation[[q]][[z]][[g]][[l]][k,"y"]<<-new.coord[2]
             time.location.regurgitation[[q]][[z]][[g]][[l]][k,"raster.value"]<<-raster::extract(map.cropped,
                                                                                                 cbind(new.coord[1],new.coord[2])) 
-            
+            #***
             #Obtain the cell number from the coordinates where the bird went (new coordinate)
             regurgitation.xy<-cellFromXY(map.cropped.labeled,new.coord)
             
@@ -478,10 +480,14 @@ final.database<-function(for.immigration="N",
   results.simulations <- name.input.database %>% 
     select(-raster.value) %>% 
     gather(fate,yes.no,same.patch:new.patch) %>% #Convert from wide to long
-    group_by(focal.patch,param.shape.step.length,param.habitat.utilization,time,fate) %>% 
+    group_by(focal.patch,patch.id.adam,param.shape.step.length,param.habitat.utilization,time,fate) %>% 
     summarise(count=sum(yes.no)) %>% #Count number of fruits thtat landed in the matrix, same patch or new patch
     ungroup() %>% 
-    spread(fate, count) #Convert from long to wide
+    spread(fate, count) %>%  #Convert from long to wide
+    inner_join(name.input.database %>% 
+                 select(focal.patch,patch.size,percent.forest,elevation,patch.id.adam) %>% 
+                 distinct(),
+               by=c("focal.patch","patch.id.adam"))
   
   #If the function is used for the immigration part, then it has to consider the immigration column generated
   if(for.immigration=="Y"){
@@ -517,20 +523,24 @@ dispersal.distance<-function(focal.patch=NA,
   df<-name.input.database
   
   for (z in 1:length(name.input.database)){
+    
     for(a in 1:length(name.input.database[[z]])){
-    for (g in 1:num.sim.points.per.patch){
       
-      for(l in 1:num.sim.per.point)
+      for (g in 1:length(name.input.database[[z]][[a]])){
+        
+        for (l in 1:length(name.input.database[[z]][[a]][[g]]))
+          
+          for (q in 1:length(name.input.database[[z]][[a]][[g]][[l]]))
       {
         #Create a column for the dispersal distance
         #df[[z]][[g]][[l]]$disperal.distance<-0
         
-        for (k in 2:nrow(df[[z]][[a]][[g]][[l]]))
+        for (k in 2:nrow(df[[z]][[a]][[g]][[l]][[q]]))
         #It will use the first xy values row and obtain the distance in the x y values of the n row of the data frame
-          df[[z]][[a]][[g]][[l]][k,"dispersal.distance"]<-pointDistance(df[[z]][[a]][[g]][[l]][1,c("x","y")], #Always select the first row since it is the starting point
-                                                                   df[[z]][[a]][[g]][[l]][k,c("x","y")], #Select row k
+          df[[z]][[a]][[g]][[l]][[q]][k,"dispersal.distance"]<-pointDistance(df[[z]][[a]][[g]][[l]][[q]][1,c("x","y")], #Always select the first row since it is the starting point
+                                                                   df[[z]][[a]][[g]][[l]][[q]][k,c("x","y")], #Select row k
                                                                    lonlat=F)
-        df[[z]][[a]][[g]][[l]][1,"dispersal.distance"]<-0
+        df[[z]][[a]][[g]][[l]][[q]][1,"dispersal.distance"]<-0
         
         #Assign the data frame the name of the data frame I put at the beginning of the function
         assign(deparse(substitute(name.input.database)),
