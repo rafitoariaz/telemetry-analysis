@@ -621,16 +621,16 @@ condensed.dataframe.subset <- condensed.dataframe.subset %>%
   mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + cos(ta_)  + log_sl_:forest27_end + cos(ta_):forest27_end + strata(step_id_))))
 
 
-#***I cannot run row 1, 4,6,8,9,10
+#I usded another method to calculate this. Frequencies 432, 591, 672 and 910 gave a NA to habitat selection parameter. Those are birds that where only on forest or non-forested areas (except for 1 of them which is calculating good the parameter). However, they give an estimate of the shape and scale parameter of the step length
+condensed.dataframe.subset.remaining2<-condensed.dataframe.subset.remaining[c(1,4,6,8,9,10),] %>% 
+  mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + cos(ta_) + strata(step_id_),method="efron")))
+
+#***I cannot run row 4,6,8,9,10
 condensed.dataframe.subset.remaining <- condensed.dataframe.subset.remaining[c(2,3,5,7),] %>% 
   mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + cos(ta_) + strata(step_id_))))
 
-#***CONTINUE CHECKING WHY I CANNOT RUN SOME BIRDS
-View(condensed.dataframe.subset.remaining[c(1),] %>% 
-  mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + cos(ta_) + strata(step_id_)))))
 
-
-condensed.dataframe.subset <- rbind(condensed.dataframe.subset,condensed.dataframe.subset.remaining)
+condensed.dataframe.subset <- rbind(condensed.dataframe.subset,condensed.dataframe.subset.remaining,condensed.dataframe.subset.remaining2)
 ```
 
 
@@ -828,11 +828,6 @@ ifelse(i==nrow(parameters.simulations),par(new=FALSE),par(new=TRUE))
 }
 }
 
-
-
-#TASKS TO DO.
-#2. CHECK WHY SOME INDIVIDUALS I CANNOT FIT A SSF
-
 ```
 
 ```{r}
@@ -863,7 +858,7 @@ ifelse(i==3,par(new=FALSE),par(new=TRUE))
 }
 }
 
-#I DO NOT SEE ANY DRASTIC CHANGES, SO i COUL USE THE MEDIAN OF THE SCALE PARAMETER
+#I DO NOT SEE ANY DRASTIC CHANGES, SO I COULD USE THE MEDIAN OF THE SCALE PARAMETER
 
 rm(scale.parameter.modification)
 ```
@@ -975,33 +970,6 @@ for (i in 1:length(forest.raster.cropped)){
   plot(land_use_raster)
  
   points(forest.raster.cropped[[11]]$focal.patch.xy,pch=16)
-
-```
-
-```{r}
-#THIS IS SOME TEST CODE TO CHECK IF I DID THE RIGHT THING
-test.map<-crop(land_use_raster, amt::bbox(condensed.dataframe.subset$trk[[i]], spatial = TRUE, buff = 200))
-
-points.inside<-matrix(data=c(276500,971000),nrow=1)
-  
-points.outside<-matrix(data=c(275500,972200),nrow=1) 
-
-forest.raster.cropped[[i]]$forest.raster.cropped.labeled[cellFromXY (forest.raster.cropped[[i]]$forest.raster.cropped.labeled, points.inside)]
-
-forest.raster.cropped[[i]]$forest.raster.cropped.labeled[cellFromXY (forest.raster.cropped[[i]]$forest.raster.cropped.labeled, points.outside)]
-
-simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
-                  tot.num.minutes=60,
-                  fix.rate=5,
-                  parameters.simulations=parameters.simulations.model,
-                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  map.full=test.map,
-                  map.cropped=test.map,
-                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
-                  landscape.variables=forest.raster.cropped[[i]]$landscape.variables,
-                  name.output.list=raw.results.emigration) #Remember now that the output data frame is results.simulations.list
-
 
 ```
 
@@ -1138,7 +1106,7 @@ summary(mod.1<-gls(asin(sqrt(prop.same.patch)) ~scale(param.shape.step.length) +
 #GLMM nesting frequency
 summary(mod.2<-lme(asin(sqrt(prop.same.patch)) ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch),method="REML")))
 
-anov#Continue with LMM
+#Continue with LMM
 #Without step length
 summary(mod.3 <- update(mod.2,.~. -scale(param.shape.step.length)))
 
@@ -1215,6 +1183,11 @@ summary(mod.5 <- update(mod.4,.~. -scale(elevation)))
 #Without elevation. #MArginally significant, but I will take it out
 summary(mod.6 <- update(mod.5,.~. -scale(param.habitat.utilization)))
 
+results.emigration %>% 
+  filter(prop.new.patch>0) %>% 
+  group_by(percent.forest) %>% 
+  summarise(number=n())
+
 
 results.emigration %>% 
   ggplot(aes(x=percent.forest,y=prop.new.patch)) +
@@ -1228,18 +1201,37 @@ results.emigration %>%
 ```
 
 ```{r}
+#LMM for testing differences in the proportion of seeds that were dispersed to different fates
+test.proportions<-results.emigration %>% 
+  mutate(id=paste(focal.patch,patch.id.adam,sep=".")) %>% 
+  select(id,prop.same.patch,prop.matrix,prop.new.patch)  %>% 
+  gather(fate,proportion,prop.same.patch:prop.new.patch) %>% 
+  lme(asin(sqrt(proportion))~fate,random = ~1 | id,data=.)
+
+summary(test.proportions)
+
+#Graph of proportion of seed by fate
 results.emigration %>% 
   select(prop.same.patch,prop.matrix,prop.new.patch) %>% 
   gather(fate,proportion) %>% 
   group_by(fate) %>% 
   summarise(mean.prop=mean(proportion),
-            std.dev=sd(proportion)) %>% 
+            std.dev=sd(proportion),
+            std.error=sd(proportion)/sqrt(n()),
+            CI.low=mean(proportion)-2*sd(proportion)/sqrt(n()),
+            CI.high=mean(proportion)+2*sd(proportion)/sqrt(n())) %>% 
   ungroup() %>%  
-  ggplot(aes(x=factor(fate,level=c("prop.same.patch","prop.matrix","prop.new.patch")),y=mean.prop,fill=fate)) +
+  ggplot(aes(x=factor(fate,level=c("prop.same.patch","prop.matrix","prop.new.patch")),y=mean.prop)) +
   geom_col() +
-  geom_errorbar(aes(ymin=mean.prop-std.dev, ymax=mean.prop+std.dev), width=.2, position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=mean.prop-std.error, ymax=mean.prop+std.error), width=.2, position=position_dodge(.9)) +
+  scale_x_discrete(labels=c("Focal patch", "Matrix", "New patch")) +
+  theme(legend.position = "none") +
   xlab("Fate") +
-  ylab("Proportion of seeds")
+  ylab("Mean proportion of seeds")
+
+ggsave("Graphs/Proportion of seeds by fate.jpg")
+
+rm(test.proportions)
 ```
 
 
@@ -1324,12 +1316,20 @@ borrar %>%
 
 #Boxplot of log seed dispersal distance by fate
 borrar %>% 
-  ggplot(aes(y=log.dispersal.distance)) +
+  filter(fate!="matrix") %>% 
+  ggplot(aes(x=factor(fate,levels=c("same.patch","new.patch")),y=log.dispersal.distance)) +
   geom_boxplot() +
-  facet_wrap(~fate)
+  xlab("Fate") +
+  ylab("Log seed dispersal disteance") +
+  scale_x_discrete(labels=c("Focal patch","New patch"))
+
+ggsave("Graphs/Seed dispersal distance by fate.jpg")
 
 #Summary of seed dispersal distance by fate
-summary(borrar$dispersal.distance)
+borrar %>% 
+  filter(fate!="matrix") %>% 
+  select(dispersal.distance) %>% 
+  summary()
 tapply(borrar$dispersal.distance,borrar$fate,summary)
 
 #Pair plot of seed dispersal distance only if it landed on forest
@@ -1370,7 +1370,7 @@ summary(mod.5 <- update(mod.4,.~. -scale(log.patch.size)))
 
 
 
-
+#Seed dspersal distance within the same patch
 results.simulations.dispersal.distance.df %>% 
   filter(same.patch==1) %>% #This only considers seed dispersal to places where it is likely that it will germinate
   select(log.dispersal.distance,param.shape.step.length,param.habitat.utilization,time,log.patch.size,percent.forest,elevation) %>%
