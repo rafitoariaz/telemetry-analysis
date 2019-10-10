@@ -659,21 +659,21 @@ for (i in 1:nrow(condensed.dataframe.subset)) {
 
 
 #Make a data base with the values of each parameter. REMAINING
-parameters.simulations.remaining <- data.frame(id.simulation=condensed.dataframe.subset.remaining$id) #*** IN THIS LINE I WOULD PUT THE NUMBER OF SIMULATIONS I WOULD LIKE TO DO, BUT NO I AM PUTTING THE ID OF THE BIRD SINCE EACH ONE HAS A SPECIFIC PARAMTER
+#parameters.simulations.remaining <- data.frame(id.simulation=condensed.dataframe.subset.remaining$id) #*** IN THIS LINE I WOULD PUT THE NUMBER OF SIMULATIONS I WOULD LIKE TO DO, BUT NO I AM PUTTING THE ID OF THE BIRD SINCE EACH ONE HAS A SPECIFIC PARAMTER
 
-for (i in 1:nrow(condensed.dataframe.subset.remaining)) {
+#for (i in 1:nrow(condensed.dataframe.subset.remaining)) {
   
-  parameters.simulations.remaining$shape.step.length[[i]] <- sl_shape(condensed.dataframe.subset.remaining$fit[[i]])  #It uses a gamma distribution for step length. I think this is the mean. ***Understand why are they using a gamma distribution. HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE GAMMA DISTRIBUTION I WOULD LIKE TO SIMULATE
+  #parameters.simulations.remaining$shape.step.length[[i]] <- sl_shape(condensed.dataframe.subset.remaining$fit[[i]])  #It uses a gamma distribution for step length. I think this is the mean. ***Understand why are they using a gamma distribution. HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE GAMMA DISTRIBUTION I WOULD LIKE TO SIMULATE
   
-  parameters.simulations.remaining$scale.step.length[[i]] <- sl_scale(condensed.dataframe.subset.remaining$fit[[i]]) #It uses a gamma distribution for step length. I think this is the scale, which is part of what will determine the distribution ***Understand why are they using a gamma distribution. HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE GAMMA DISTRIBUTION I WOULD LIKE TO SIMULATE
+  #parameters.simulations.remaining$scale.step.length[[i]] <- sl_scale(condensed.dataframe.subset.remaining$fit[[i]]) #It uses a gamma distribution for step length. I think this is the scale, which is part of what will determine the distribution ***Understand why are they using a gamma distribution. HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE GAMMA DISTRIBUTION I WOULD LIKE TO SIMULATE
 
   
-  parameters.simulations.remaining$habitat.utilization[[i]] <- coef(condensed.dataframe.subset.remaining$fit[[i]])["forest27_endforest"] #***HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE HABITAT SELECTION COEFFICIENT I WOULD LIKE TO SIMULATE
+  #parameters.simulations.remaining$habitat.utilization[[i]] <- coef(condensed.dataframe.subset.remaining$fit[[i]])["forest27_endforest"] #***HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE HABITAT SELECTION COEFFICIENT I WOULD LIKE TO SIMULATE
   
-}
+#}
 
 
-parameters.simulations <- rbind(parameters.simulations,parameters.simulations.remaining)
+#parameters.simulations <- rbind(parameters.simulations,parameters.simulations.remaining)
 
 
 #This chunk is for obtaining the coordinates of the focal patch from Adam's data base and then figuring out the patch id in the croppped labeled map. ***MAYBE HERE I CAN CREATE A DATA BASE WITH THE XY COORDINATES OF THE PATCHES WHERE I WOULD LIKE TO DO THE SIMULATIONS
@@ -758,6 +758,20 @@ parameters.simulations %>%
   mutate(log.patch.size=patch_size) %>% 
   select(-c(patch_size,id.simulation,Patch)) %>% 
   ggpairs(upper=list(continuous="smooth"),lower=list(continuous="cor"))
+
+#GGpairs of parameters of log transformed variables
+parameters.simulations %>% 
+  inner_join(frequencies.patches %>% 
+               mutate(Patch=PATCH,
+                      id.simulation=FREQ) %>% 
+               select(Patch,id.simulation),by="id.simulation") %>% 
+  inner_join(patches.info,by="Patch") %>% 
+  mutate(log.patch.size=patch_size,
+         log.shape.step.length=log(shape.step.length),
+         log.scale.step.length=log(scale.step.length),
+         log.habitat.utilization=log(habitat.utilization)) %>% 
+  select(-c(patch_size,id.simulation,Patch,shape.step.length,scale.step.length,habitat.utilization)) %>% 
+  ggpairs(upper=list(continuous="cor"),lower=list(continuous="smooth"))
 ```
 
 
@@ -831,15 +845,6 @@ ifelse(i==nrow(parameters.simulations),par(new=FALSE),par(new=TRUE))
 ```
 
 ```{r}
-#Make data frame that will include all the combinations of the parameters I would like to simulate per patch
-parameters.simulations.model <- data.frame(shape.step.length=quantile(parameters.simulations$shape.step.length,probs=c(0.05,0.5,0.95)),
-             scale.step.length=median(parameters.simulations$scale.step.length),
-             habitat.utilization=quantile(parameters.simulations %>% filter(habitat.utilization>-600) %>% select(habitat.utilization) %>% .$habitat.utilization,probs=c(0.05,0.5,0.95))) %>% 
-  expand.grid() %>% #Make all the combinations
-  distinct() %>%  #Double check that there are no repeated values
-  mutate(id.simulation=1:nrow(.))
-
-
 #Make a data frame with the shape parameters I selected and with different scale parameters (quantiles 0.05,0.5,0.95)
 scale.parameter.modification <- scale.parameter.modification %>% 
   mutate(shape.step.length.lower.quantile=quantile(parameters.simulations$shape.step.length,probs=0.05),
@@ -858,9 +863,23 @@ ifelse(i==3,par(new=FALSE),par(new=TRUE))
 }
 }
 
-#I DO NOT SEE ANY DRASTIC CHANGES, SO I COULD USE THE MEDIAN OF THE SCALE PARAMETER
+#I DO NOT SEE ANY DRASTIC CHANGES, SO I COULD USE THE MEDIAN OF THE SHAPE PARAMETER
 
 rm(scale.parameter.modification)
+```
+
+```{r}
+#Boxplot parameter of habitat utilization
+boxplot(parameters.simulations$habitat.utilization)
+
+#Make data frame that will include all the combinations of the parameters I would like to simulate per patch
+parameters.simulations.model <- data.frame(shape.step.length=mean(parameters.simulations$shape.step.length),
+             scale.step.length=quantile(parameters.simulations$scale.step.length,probs=c(0.05,0.5,0.95)),
+             habitat.utilization=quantile(parameters.simulations %>% filter(habitat.utilization>-60) %>% select(habitat.utilization) %>% .$habitat.utilization,probs=c(0.05,0.5,0.99))) %>% 
+  expand.grid() %>% #Make all the combinations
+  distinct() %>%  #Double check that there are no repeated values
+  mutate(id.simulation=1:nrow(.))
+
 ```
 
 
@@ -942,12 +961,13 @@ tapply(data$estimate,data$term,sd)
 
 #Summary of habitat selection parameter without the outlier
 data %>% 
-  filter(term=="forest27_endforest" & estimate>min(estimate)) %>% 
+  filter(term=="forest27_endforest") %>% 
+  filter(estimate>min(estimate)) %>% 
   select(estimate) %>% 
   summary()
 
 #Save workspace for simulation
-#save.image("worksapce_calculon.RData")
+#save.image("workspace_calculon.RData")
 #rm(graph.parameters.database)
 ```
 
@@ -959,7 +979,7 @@ for (i in 1:length(forest.raster.cropped)){
  
  
   points(forest.raster.cropped[[i]]$focal.patch.xy,
-         col=plasma(length(forest.raster.cropped)[i],0.4),pch=16)
+         col=plasma(length(forest.raster.cropped),0.4)[i],pch=16)
   
 }
  
@@ -985,7 +1005,7 @@ Run replicate simulations:
 source("SSF simulation functions all birds.R")
 
 #Set up the number of simulations per patch and also number of simulations per starting point
-num.sim.points.per.patch<-50
+num.sim.points.per.patch<-1
 num.sim.per.point<-1
 
 #Make a list of the
@@ -997,11 +1017,11 @@ registerDoParallel(detectCores())
 #1,2,4,8,13,15,17,18
 #for (i in 1:nrow(parameters.simulations)){
 
-  results.simulations.list <- foreach (i= c(14),#c(1,2,4,9,11,13,14), 11
+  results.simulations.list <- foreach (i= c(1:6,8,9,11:20,22:23), #1:nrow(parameters.simulations),
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
-                  tot.num.minutes=60,
+                  tot.num.minutes=15,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations.model,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
@@ -1087,6 +1107,42 @@ results.emigration <- final.database(name.input.database=results.simulations.df,
                name.output.dataframe=results.emigration) %>% 
   filter(time==20 | time==40 | time==60) #Subsetting the times that I am interested
 ```
+
+
+```{r}
+#LMM for testing differences in the proportion of seeds that were dispersed to different fates
+test.proportions<-results.emigration %>% 
+  mutate(id=paste(focal.patch,patch.id.adam,sep=".")) %>% 
+  select(id,prop.same.patch,prop.matrix,prop.new.patch)  %>% 
+  gather(fate,proportion,prop.same.patch:prop.new.patch) %>% 
+  lme(asin(sqrt(proportion))~fate,random = ~1 | id,data=.)
+
+summary(test.proportions)
+
+#Graph of proportion of seed by fate
+results.emigration %>% 
+  select(prop.same.patch,prop.matrix,prop.new.patch) %>% 
+  gather(fate,proportion) %>% 
+  group_by(fate) %>% 
+  summarise(mean.prop=mean(proportion),
+            std.dev=sd(proportion),
+            std.error=sd(proportion)/sqrt(n()),
+            CI.low=mean(proportion)-2*sd(proportion)/sqrt(n()),
+            CI.high=mean(proportion)+2*sd(proportion)/sqrt(n())) %>% 
+  ungroup() %>%  
+  ggplot(aes(x=factor(fate,level=c("prop.same.patch","prop.matrix","prop.new.patch")),y=mean.prop)) +
+  geom_col() +
+  geom_errorbar(aes(ymin=mean.prop-std.error, ymax=mean.prop+std.error), width=.2, position=position_dodge(.9)) +
+  scale_x_discrete(labels=c("Focal patch", "Matrix", "New patch")) +
+  theme(legend.position = "none") +
+  xlab("Fate") +
+  ylab("Mean proportion of seeds")
+
+ggsave("Graphs/Proportion of seeds by fate.jpg")
+
+rm(test.proportions)
+```
+
 
 ```{r}
 #Anaylsis of the porportion of fruits in the landscape
@@ -1198,40 +1254,6 @@ results.emigration %>%
   ggplot(aes(x=time,y=prop.new.patch)) +
   geom_point() +
   geom_smooth(method="lm")
-```
-
-```{r}
-#LMM for testing differences in the proportion of seeds that were dispersed to different fates
-test.proportions<-results.emigration %>% 
-  mutate(id=paste(focal.patch,patch.id.adam,sep=".")) %>% 
-  select(id,prop.same.patch,prop.matrix,prop.new.patch)  %>% 
-  gather(fate,proportion,prop.same.patch:prop.new.patch) %>% 
-  lme(asin(sqrt(proportion))~fate,random = ~1 | id,data=.)
-
-summary(test.proportions)
-
-#Graph of proportion of seed by fate
-results.emigration %>% 
-  select(prop.same.patch,prop.matrix,prop.new.patch) %>% 
-  gather(fate,proportion) %>% 
-  group_by(fate) %>% 
-  summarise(mean.prop=mean(proportion),
-            std.dev=sd(proportion),
-            std.error=sd(proportion)/sqrt(n()),
-            CI.low=mean(proportion)-2*sd(proportion)/sqrt(n()),
-            CI.high=mean(proportion)+2*sd(proportion)/sqrt(n())) %>% 
-  ungroup() %>%  
-  ggplot(aes(x=factor(fate,level=c("prop.same.patch","prop.matrix","prop.new.patch")),y=mean.prop)) +
-  geom_col() +
-  geom_errorbar(aes(ymin=mean.prop-std.error, ymax=mean.prop+std.error), width=.2, position=position_dodge(.9)) +
-  scale_x_discrete(labels=c("Focal patch", "Matrix", "New patch")) +
-  theme(legend.position = "none") +
-  xlab("Fate") +
-  ylab("Mean proportion of seeds")
-
-ggsave("Graphs/Proportion of seeds by fate.jpg")
-
-rm(test.proportions)
 ```
 
 
@@ -1347,7 +1369,7 @@ results.simulations.dispersal.distance.df%>%
 #library("nlme")
 summary(mod.1<-gls(log.dispersal.distance ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.simulations.dispersal.distance.df %>% 
   filter(same.patch==1 | new.patch==1)) %>% mutate(id=paste(patch.id.adam,focal.patch),
-                                                            log.dispersal.distance=log(dispersal.distance+1)))
+                                                   log.dispersal.distance=log(dispersal.distance+1)))
 
 
 #GLMM nesting frequency
@@ -1449,10 +1471,12 @@ results.simulations.dispersal.distance.df %>%
 
 
 ```{r}
-
+#save.image("borrar.RData")
+source("SSF simulation functions all birds.R")
 load("borrar.RData")
 #for (i in 1:length(forest.raster.cropped)){
-for (i in c(1,2,14)){ #not included: 4,9,11,13
+#for (i in c(1,2,4,8,9)){ #not included: 5
+for (i in c(10)){ #not included: 4,9,11,13
 start <- Sys.time()
   print(paste("Start: ",start))
   

@@ -133,7 +133,7 @@ simulate.movement<-function(focal.patch=NA,
           
           
           
-          for (k in 1:tot.num.steps+1){ #***CHECK IF  HAVE TO PUT 1 OR 2. I WOULD SAY 2 BUT WHEN I PUT IT IT DOES NOT CONSIDER THE 2 AND STARTS THE SEQUENCE AT 3 
+          for (k in 1:tot.num.steps){ #***CHECK IF  HAVE TO PUT 1 OR 2. I WOULD SAY 2 BUT WHEN I PUT IT IT DOES NOT CONSIDER THE 2 AND STARTS THE SEQUENCE AT 3 
             
             #tud <- wet_c #Copy the cropped raster map
             tud <- map.full #Use the full raster map!
@@ -142,11 +142,12 @@ simulate.movement<-function(focal.patch=NA,
             #Here is obtaining the stud kernel for a specific point. It simulates n steps (72 in this example) using the movement (mk) and the habitat (hk) kernels and starting in a specific point (as.numeric) and then estimats the utilization distribution (utilization distribution is a probability distribution giving the probability density that an animal is found at a given point in space. Therefore, in each simulation all the values sum to 1).
             
             #At the end of the simulation I store the next point in which the bird moved (starting.point). So here I am saying that IF I am simulating the first step, I will do the kernel from the initial.starting.point. ELSE: if I am doing the kernel for the following points after doing the kernel for the first point, I will use the starting.point that was selected at the end of this chunk
-            if (k==2){
+            if (k==1){
               system.time(for(i in 1:1e3) 
                 tud <- tud +
                   simulate_ud(movement.kernel,habitat.kernel,initial.starting.point,n= tot.num.steps)) 
             }else{
+              #repeat{
               system.time(for(i in 1:1e3) 
                 tud <- tud +
                   simulate_ud(movement.kernel,habitat.kernel,starting.point,n= tot.num.steps)) 
@@ -162,22 +163,33 @@ simulate.movement<-function(focal.patch=NA,
             sampCellProb<-sample(x=1:length(tud[]),prob=tud[], size=1)
             
             #Obtain coordinates from sampled cell. ***IF THERE ARE MORE CELLS THAT HAVE THE SAME PROBABILITY, I WILL CHOOSE THE FIRST ROW. IS THAT THE WAY TO DO A RANDOM SAMPLE?
-            new.coord<-xyFromCell(tud, sampCellProb)[1,]
+            new.coord<<-xyFromCell(tud, sampCellProb)[1,]
+            
+            test<-cellFromXY(land_use_raster_labeled,new.coord)
+            
+            #if (is.na(map.cropped.labeled[test])=="FALSE") {
+            #  break
+            #}
+              #}
+              
             
             #TEST. data frame with various cells** I NEED TO PUT TO WORK THIS FUNCTION SINCE IT PUT ME AN ERROR THAT THERE ARE MANY LOCATIONS WITH THE SAME PROBABILITY
             #ifelse(isTRUE(nrow(new.coord)==1)=="TRUE", new.coord,subset(new.coord,new.coord[,"x"]==sample(new.coord[,"x"])[1]))
             
             #Save spatial point in a data frame
-            time.location.regurgitation[[q]][[z]][[g]][[l]][k,"x"]<<-new.coord[1]
-            time.location.regurgitation[[q]][[z]][[g]][[l]][k,"y"]<<-new.coord[2]
-            time.location.regurgitation[[q]][[z]][[g]][[l]][k,"raster.value"]<<-raster::extract(map.cropped,
+            time.location.regurgitation[[q]][[z]][[g]][[l]][k+1,"x"]<<-new.coord[1]
+            time.location.regurgitation[[q]][[z]][[g]][[l]][k+1,"y"]<<-new.coord[2]
+            time.location.regurgitation[[q]][[z]][[g]][[l]][k+1,"raster.value"]<<-raster::extract(map.cropped,
                                                                                                 cbind(new.coord[1],new.coord[2])) 
-            #***
+            
             #Obtain the cell number from the coordinates where the bird went (new coordinate)
             regurgitation.xy<-cellFromXY(map.cropped.labeled,new.coord)
             
+            #}
+            
             #Obtain the patch id where the seed was deposited
-            time.location.regurgitation[[q]][[z]][[g]][[l]][k,"patch.emigrated"]<<-map.cropped.labeled[regurgitation.xy]
+            time.location.regurgitation[[q]][[z]][[g]][[l]][k+1,"patch.emigrated"]<<-map.cropped.labeled[regurgitation.xy]
+    
             
             #If patch where it emigrated is equal to patch where it landed, it stayed on the same patch
             time.location.regurgitation[[q]][[z]][[g]][[l]]$same.patch<<-ifelse(time.location.regurgitation[[q]][[z]][[g]][[l]]$patch.emigrated==time.location.regurgitation[[q]][[z]][[g]][[l]]$focal.patch,1,0)
@@ -222,10 +234,11 @@ simulate.movement<-function(focal.patch=NA,
             #Print information
             #print(paste((sum(1:z)*g*l*k),"th simulation of",length(focal.patch)*length(num.sim.points.per.patch)*length(num.sim.per.point)*length(tot.num.steps),"simulations"))
             print(paste("Patch",z,"of",length(focal.patch),"patches. Patch id analyzed now:",focal.patch[z]))
+            #print(paste(q,"th parameter simulation of",nrow(parameters.simulations.model,"parameters")))
             print(paste("Point",g,"of",num.sim.points.per.patch,"points per patch"))
             #print(paste("Point",g,"of",num.sim.points.per.patch,"starting points per patch"))
             print(paste("Point",l,"of",num.sim.per.point,"simulations in the same starting point"))
-            print(paste("Step",k-1,"of",tot.num.steps,"steps"))
+            print(paste("Step",k,"of",tot.num.steps,"steps"))
           }}}}}
   
   time.location.regurgitation
