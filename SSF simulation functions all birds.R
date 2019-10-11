@@ -516,7 +516,7 @@ final.database<-function(for.immigration="N",
   results.simulations <- name.input.database %>% 
     select(-raster.value) %>% 
     gather(fate,yes.no,same.patch:new.patch) %>% #Convert from wide to long
-    group_by(focal.patch,patch.id.adam,param.shape.step.length,param.habitat.utilization,time,fate) %>% 
+    group_by(focal.patch,patch.id.adam,param.shape.step.length,param.scale.step.length,param.habitat.utilization,time,fate) %>% 
     summarise(count=sum(yes.no)) %>% #Count number of fruits thtat landed in the matrix, same patch or new patch
     ungroup() %>% 
     spread(fate, count) %>%  #Convert from long to wide
