@@ -138,20 +138,42 @@ simulate.movement<-function(focal.patch=NA,
             #tud <- wet_c #Copy the cropped raster map
             tud <- map.full #Use the full raster map!
             tud[] <- 0 #Putting 0's to map
+        
             
             #Here is obtaining the stud kernel for a specific point. It simulates n steps (72 in this example) using the movement (mk) and the habitat (hk) kernels and starting in a specific point (as.numeric) and then estimats the utilization distribution (utilization distribution is a probability distribution giving the probability density that an animal is found at a given point in space. Therefore, in each simulation all the values sum to 1).
             
             #At the end of the simulation I store the next point in which the bird moved (starting.point). So here I am saying that IF I am simulating the first step, I will do the kernel from the initial.starting.point. ELSE: if I am doing the kernel for the following points after doing the kernel for the first point, I will use the starting.point that was selected at the end of this chunk
             if (k==1){
+              repeat{
               system.time(for(i in 1:1e3) 
                 tud <- tud +
                   simulate_ud(movement.kernel,habitat.kernel,initial.starting.point,n= tot.num.steps)) 
-            }else{
-              #repeat{
+                #Since we did x simulations (in this case 5000) and the probability of each simulation summed to 1, all the cells now sum 5000. We have no normilize the information
+                tud[] <- tud[] / sum(tud[]) 
+                
+                #We can use this command to see the histogram of probabilities. 
+                #hist(tud.without.zeros,breaks=1000)
+                
+                #Sample from the probabilites in the tud kernel with weights equal to the probability values of each cell
+                sampCellProb<-sample(x=1:length(tud[]),prob=tud[], size=1)
+                
+                #Obtain coordinates from sampled cell. ***IF THERE ARE MORE CELLS THAT HAVE THE SAME PROBABILITY, I WILL CHOOSE THE FIRST ROW. IS THAT THE WAY TO DO A RANDOM SAMPLE?
+                new.coord<<-xyFromCell(tud, sampCellProb)[1,]
+                
+                test<-cellFromXY(land_use_raster_labeled,new.coord)
+                
+                if (is.na(land_use_raster_labeled[test])=="FALSE") {
+                  break
+                }
+                
+                }
+                
+                }else{
+              repeat{
               system.time(for(i in 1:1e3) 
                 tud <- tud +
                   simulate_ud(movement.kernel,habitat.kernel,starting.point,n= tot.num.steps)) 
-            }
+            
             
             #Since we did x simulations (in this case 5000) and the probability of each simulation summed to 1, all the cells now sum 5000. We have no normilize the information
             tud[] <- tud[] / sum(tud[]) 
@@ -167,10 +189,11 @@ simulate.movement<-function(focal.patch=NA,
             
             test<-cellFromXY(land_use_raster_labeled,new.coord)
             
-            #if (is.na(map.cropped.labeled[test])=="FALSE") {
-            #  break
-            #}
-              #}
+            if (is.na(land_use_raster_labeled[test])=="FALSE") {
+              break
+            }
+              }
+                }
               
             
             #TEST. data frame with various cells** I NEED TO PUT TO WORK THIS FUNCTION SINCE IT PUT ME AN ERROR THAT THERE ARE MANY LOCATIONS WITH THE SAME PROBABILITY
