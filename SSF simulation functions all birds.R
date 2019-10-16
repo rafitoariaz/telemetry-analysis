@@ -52,6 +52,13 @@ simulate.movement<-function(focal.patch=NA,
                         elevation=0,
                         patch.id.adam=0) 
   
+  #Create a data frame for storing the proportion of points that landed and not landed on the map
+  test.new.coords<<-data.frame(focal.patch=0,
+                               patch.id.adam=0,
+                               x=0,
+                               y=0,
+                               test=0)
+  
   for (q in 1:nrow(parameters.simulations)){
     
     one.sim$id.simulation=parameters.simulations$id.simulation[[q]]
@@ -106,6 +113,7 @@ simulate.movement<-function(focal.patch=NA,
           #IF I am starting with the first step, then it will generate a random starting point in the same patch. ELSE will run for the following simulations of movement behavior but it will not generate a new starting point since I want to simulate movement behavior on the same starting point.
           if (l==1){
             #Generate a random starting point.
+            
             initial.starting.point<-data.frame(sampleStratified(map.cropped.labeled, 
                                                                 1, xy=T))
             initial.starting.point<-subset(initial.starting.point,
@@ -162,6 +170,13 @@ simulate.movement<-function(focal.patch=NA,
                 
                 test<-cellFromXY(land_use_raster_labeled,new.coord)
                 
+                test.new.coords<<-rbind(test.new.coords,
+                                        data.frame(focal.patch=time.location.regurgitation[[q]][[z]][[g]][[l]]$focal.patch,
+                                             patch.id.adam=time.location.regurgitation[[q]][[z]][[g]][[l]]$patch.id.adam,
+                                             x=initial.starting.point[1],
+                                             y=initial.starting.point[2],
+                                             test=is.na(land_use_raster_labeled[test])))
+
                 if (is.na(land_use_raster_labeled[test])=="FALSE") {
                   break
                 }
@@ -188,6 +203,14 @@ simulate.movement<-function(focal.patch=NA,
             new.coord<<-xyFromCell(tud, sampCellProb)[1,]
             
             test<-cellFromXY(land_use_raster_labeled,new.coord)
+            
+            test.new.coords<<-rbind(test.new.coords,
+                                    data.frame(focal.patch=time.location.regurgitation[[q]][[z]][[g]][[l]]$focal.patch,
+                                               patch.id.adam=time.location.regurgitation[[q]][[z]][[g]][[l]]$patch.id.adam,
+                                               x=initial.starting.point[1],
+                                               y=initial.starting.point[2],
+                                               test=is.na(land_use_raster_labeled[test])))
+            
             
             if (is.na(land_use_raster_labeled[test])=="FALSE") {
               break
@@ -247,9 +270,27 @@ simulate.movement<-function(focal.patch=NA,
             
             match(z,focal.patch)
             
+            range.x<-range(time.location.regurgitation[[q]][[z]][[g]][[l]]$x)
+            range.y<-range(time.location.regurgitation[[q]][[z]][[g]][[l]]$y)
             
+            Extent <- t(cbind(range.x, range.y))
+            Extent <- Extent + rep(c(-1000,1000),each=2)
             
+            plot(land_use_raster,xlim=Extent[1,], ylim=Extent[2,])
             
+         
+                  #Plot points where the animal moved
+                  points(time.location.regurgitation[[q]][[z]][[g]][[l]]$x,time.location.regurgitation[[q]][[z]][[g]][[l]]$y,
+                         pch=19,cex=0.5, type="b")
+                  lines(time.location.regurgitation[[q]][[z]][[g]][[l]]$x,time.location.regurgitation[[q]][[z]][[g]][[l]]$y,
+                        col=time.location.regurgitation[[q]][[z]][[g]][[l]]$num.simulation,lwd=2)
+                  
+                  #Ploints plot in yellow where the animal started and in red where the animal stopped
+                  points(time.location.regurgitation[[q]][[z]][[g]][[l]]$x[c(1,length(time.location.regurgitation[[q]][[z]][[g]][[l]]$x))],
+                         time.location.regurgitation[[q]][[z]][[g]][[l]]$y[c(1,length(time.location.regurgitation[[q]][[z]][[g]][[l]]$y))],
+                         pch=19,col=c("coral","red"))
+                  
+              
             #Give the name of the data frame to the name that I stated on the function
             assign(deparse(substitute(name.output.list)),time.location.regurgitation, envir=.GlobalEnv)
             
@@ -292,7 +333,7 @@ for (z in 1:length(focal.patch)){
   for (g in 1:num.sim.points.per.patch){
     
     for(l in 1:num.sim.per.point) {
-      range.x<-range(dataframe.results[[z]][[g]][[l]]$x)
+      range.x<-range(dataframe.results[[q]][[z]][[g]][[l]]$x)
       range.x<-range(range.x)
       #print(range.x)
       
@@ -306,7 +347,7 @@ for (z in 1:length(focal.patch)){
   for (g in 1:num.sim.points.per.patch){
     
     for(l in 1:num.sim.per.point) {
-      range.y<-range(dataframe.results[[z]][[g]][[l]]$y)
+      range.y<-range(dataframe.results[[q]][[z]][[g]][[l]]$y)
       range.y<-range.y
       #print(range.y)
     }
@@ -330,14 +371,14 @@ for (z in 1:length(focal.patch)){
     for(l in 1:num.sim.per.point)
     {
       #Plot points where the animal moved
-      points(dataframe.results[[z]][[g]][[l]]$x,dataframe.results[[z]][[g]][[l]]$y,
+      points(dataframe.results[[q]][[z]][[g]][[l]]$x,dataframe.results[[q]][[z]][[g]][[l]]$y,
              pch=19,cex=0.5, type="b")
-      lines(dataframe.results[[z]][[g]][[l]]$x,dataframe.results[[z]][[g]][[l]]$y,
-            col=dataframe.results[[z]][[g]][[l]]$num.simulation,lwd=2)
+      lines(dataframe.results[[q]][[z]][[g]][[l]]$x,dataframe.results[[q]][[z]][[g]][[l]]$y,
+            col=dataframe.results[[q]][[z]][[g]][[l]]$num.simulation,lwd=2)
       
       #Ploints plot in yellow where the animal started and in red where the animal stopped
-      points(dataframe.results[[z]][[g]][[l]]$x[c(1,length(dataframe.results[[z]][[g]][[l]]$x))],
-             dataframe.results[[z]][[g]][[l]]$y[c(1,length(dataframe.results[[z]][[g]][[l]]$y))],
+      points(dataframe.results[[q]][[z]][[g]][[l]]$x[c(1,length(dataframe.results[[q]][[z]][[g]][[l]]$x))],
+             dataframe.results[[q]][[z]][[g]][[l]]$y[c(1,length(dataframe.results[[q]][[z]][[g]][[l]]$y))],
              pch=19,col=c("coral","red"))
       
     }
