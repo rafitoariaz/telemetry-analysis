@@ -63,8 +63,7 @@ simulate.movement<-function(focal.patch=NA,
     one.sim$patch.size<-landscape.variables$patch_size
     one.sim$percent.forest<-landscape.variables$percent_forest
     one.sim$elevation<-landscape.variables$elevation
-    one.sim$patch.id.adam<-landscape.variables$Patch
-
+    one.sim$patch.id.adam <- landscape.variables$Patch
     
     
     
@@ -134,51 +133,86 @@ simulate.movement<-function(focal.patch=NA,
           
           
           
-          for (k in 1:tot.num.steps+1){ #***CHECK IF  HAVE TO PUT 1 OR 2. I WOULD SAY 2 BUT WHEN I PUT IT IT DOES NOT CONSIDER THE 2 AND STARTS THE SEQUENCE AT 3 
+          for (k in 1:tot.num.steps){ #***CHECK IF  HAVE TO PUT 1 OR 2. I WOULD SAY 2 BUT WHEN I PUT IT IT DOES NOT CONSIDER THE 2 AND STARTS THE SEQUENCE AT 3 
             
             #tud <- wet_c #Copy the cropped raster map
             tud <- map.full #Use the full raster map!
             tud[] <- 0 #Putting 0's to map
             
+            
             #Here is obtaining the stud kernel for a specific point. It simulates n steps (72 in this example) using the movement (mk) and the habitat (hk) kernels and starting in a specific point (as.numeric) and then estimats the utilization distribution (utilization distribution is a probability distribution giving the probability density that an animal is found at a given point in space. Therefore, in each simulation all the values sum to 1).
             
             #At the end of the simulation I store the next point in which the bird moved (starting.point). So here I am saying that IF I am simulating the first step, I will do the kernel from the initial.starting.point. ELSE: if I am doing the kernel for the following points after doing the kernel for the first point, I will use the starting.point that was selected at the end of this chunk
-            if (k==2){
-              system.time(for(i in 1:1e3) 
-                tud <- tud +
-                  simulate_ud(movement.kernel,habitat.kernel,initial.starting.point,n= tot.num.steps)) 
+            if (k==1){
+              repeat{
+                system.time(for(i in 1:1e3) 
+                  tud <- tud +
+                    simulate_ud(movement.kernel,habitat.kernel,initial.starting.point,n= tot.num.steps)) 
+                #Since we did x simulations (in this case 5000) and the probability of each simulation summed to 1, all the cells now sum 5000. We have no normilize the information
+                tud[] <- tud[] / sum(tud[]) 
+                
+                #We can use this command to see the histogram of probabilities. 
+                #hist(tud.without.zeros,breaks=1000)
+                
+                #Sample from the probabilites in the tud kernel with weights equal to the probability values of each cell
+                sampCellProb<-sample(x=1:length(tud[]),prob=tud[], size=1)
+                
+                #Obtain coordinates from sampled cell. ***IF THERE ARE MORE CELLS THAT HAVE THE SAME PROBABILITY, I WILL CHOOSE THE FIRST ROW. IS THAT THE WAY TO DO A RANDOM SAMPLE?
+                new.coord<<-xyFromCell(tud, sampCellProb)[1,]
+                
+                test<-cellFromXY(land_use_raster_labeled,new.coord)
+                
+                if (is.na(land_use_raster_labeled[test])=="FALSE") {
+                  break
+                }
+                
+              }
+              
             }else{
-              system.time(for(i in 1:1e3) 
-                tud <- tud +
-                  simulate_ud(movement.kernel,habitat.kernel,starting.point,n= tot.num.steps)) 
+              repeat{
+                system.time(for(i in 1:1e3) 
+                  tud <- tud +
+                    simulate_ud(movement.kernel,habitat.kernel,starting.point,n= tot.num.steps)) 
+                
+                
+                #Since we did x simulations (in this case 5000) and the probability of each simulation summed to 1, all the cells now sum 5000. We have no normilize the information
+                tud[] <- tud[] / sum(tud[]) 
+                
+                #We can use this command to see the histogram of probabilities. 
+                #hist(tud.without.zeros,breaks=1000)
+                
+                #Sample from the probabilites in the tud kernel with weights equal to the probability values of each cell
+                sampCellProb<-sample(x=1:length(tud[]),prob=tud[], size=1)
+                
+                #Obtain coordinates from sampled cell. ***IF THERE ARE MORE CELLS THAT HAVE THE SAME PROBABILITY, I WILL CHOOSE THE FIRST ROW. IS THAT THE WAY TO DO A RANDOM SAMPLE?
+                new.coord<<-xyFromCell(tud, sampCellProb)[1,]
+                
+                test<-cellFromXY(land_use_raster_labeled,new.coord)
+                
+                if (is.na(land_use_raster_labeled[test])=="FALSE") {
+                  break
+                }
+              }
             }
             
-            #Since we did x simulations (in this case 5000) and the probability of each simulation summed to 1, all the cells now sum 5000. We have no normilize the information
-            tud[] <- tud[] / sum(tud[]) 
-            
-            #We can use this command to see the histogram of probabilities. 
-            #hist(tud.without.zeros,breaks=1000)
-            
-            #Sample from the probabilites in the tud kernel with weights equal to the probability values of each cell
-            sampCellProb<-sample(x=1:length(tud[]),prob=tud[], size=1)
-            
-            #Obtain coordinates from sampled cell. ***IF THERE ARE MORE CELLS THAT HAVE THE SAME PROBABILITY, I WILL CHOOSE THE FIRST ROW. IS THAT THE WAY TO DO A RANDOM SAMPLE?
-            new.coord<-xyFromCell(tud, sampCellProb)[1,]
             
             #TEST. data frame with various cells** I NEED TO PUT TO WORK THIS FUNCTION SINCE IT PUT ME AN ERROR THAT THERE ARE MANY LOCATIONS WITH THE SAME PROBABILITY
             #ifelse(isTRUE(nrow(new.coord)==1)=="TRUE", new.coord,subset(new.coord,new.coord[,"x"]==sample(new.coord[,"x"])[1]))
             
             #Save spatial point in a data frame
-            time.location.regurgitation[[q]][[z]][[g]][[l]][k,"x"]<<-new.coord[1]
-            time.location.regurgitation[[q]][[z]][[g]][[l]][k,"y"]<<-new.coord[2]
-            time.location.regurgitation[[q]][[z]][[g]][[l]][k,"raster.value"]<<-raster::extract(map.cropped,
-                                                                                                cbind(new.coord[1],new.coord[2])) 
+            time.location.regurgitation[[q]][[z]][[g]][[l]][k+1,"x"]<<-new.coord[1]
+            time.location.regurgitation[[q]][[z]][[g]][[l]][k+1,"y"]<<-new.coord[2]
+            time.location.regurgitation[[q]][[z]][[g]][[l]][k+1,"raster.value"]<<-raster::extract(map.cropped,
+                                                                                                  cbind(new.coord[1],new.coord[2])) 
             
             #Obtain the cell number from the coordinates where the bird went (new coordinate)
             regurgitation.xy<-cellFromXY(map.cropped.labeled,new.coord)
             
+            #}
+            
             #Obtain the patch id where the seed was deposited
-            time.location.regurgitation[[q]][[z]][[g]][[l]][k,"patch.emigrated"]<<-map.cropped.labeled[regurgitation.xy]
+            time.location.regurgitation[[q]][[z]][[g]][[l]][k+1,"patch.emigrated"]<<-map.cropped.labeled[regurgitation.xy]
+            
             
             #If patch where it emigrated is equal to patch where it landed, it stayed on the same patch
             time.location.regurgitation[[q]][[z]][[g]][[l]]$same.patch<<-ifelse(time.location.regurgitation[[q]][[z]][[g]][[l]]$patch.emigrated==time.location.regurgitation[[q]][[z]][[g]][[l]]$focal.patch,1,0)
@@ -223,10 +257,11 @@ simulate.movement<-function(focal.patch=NA,
             #Print information
             #print(paste((sum(1:z)*g*l*k),"th simulation of",length(focal.patch)*length(num.sim.points.per.patch)*length(num.sim.per.point)*length(tot.num.steps),"simulations"))
             print(paste("Patch",z,"of",length(focal.patch),"patches. Patch id analyzed now:",focal.patch[z]))
+            #print(paste(q,"th parameter simulation of",nrow(parameters.simulations.model,"parameters")))
             print(paste("Point",g,"of",num.sim.points.per.patch,"points per patch"))
             #print(paste("Point",g,"of",num.sim.points.per.patch,"starting points per patch"))
             print(paste("Point",l,"of",num.sim.per.point,"simulations in the same starting point"))
-            print(paste("Step",k-1,"of",tot.num.steps,"steps"))
+            print(paste("Step",k,"of",tot.num.steps,"steps"))
           }}}}}
   
   time.location.regurgitation
@@ -251,69 +286,69 @@ map.simulations<-function(focal.patch=NA,
                           dataframe.results=NA,
                           offset=NA,
                           map.full=NA){
-#I was trying to get the range of values of x and y coordinates but I could not do it. So I increased the offset so that I could plot all the points in the map.
-for (z in 1:length(focal.patch)){
+  #I was trying to get the range of values of x and y coordinates but I could not do it. So I increased the offset so that I could plot all the points in the map.
+  for (z in 1:length(focal.patch)){
+    
+    for (g in 1:num.sim.points.per.patch){
+      
+      for(l in 1:num.sim.per.point) {
+        range.x<-range(dataframe.results[[z]][[g]][[l]]$x)
+        range.x<-range(range.x)
+        #print(range.x)
+        
+      }
+    }
+  }
   
-  for (g in 1:num.sim.points.per.patch){
-    
-    for(l in 1:num.sim.per.point) {
-      range.x<-range(dataframe.results[[z]][[g]][[l]]$x)
-      range.x<-range(range.x)
-      #print(range.x)
-      
-    }
-  }
-}
-
-
-for (z in 1:length(focal.patch)){
   
-  for (g in 1:num.sim.points.per.patch){
+  for (z in 1:length(focal.patch)){
     
-    for(l in 1:num.sim.per.point) {
-      range.y<-range(dataframe.results[[z]][[g]][[l]]$y)
-      range.y<-range.y
-      #print(range.y)
+    for (g in 1:num.sim.points.per.patch){
+      
+      for(l in 1:num.sim.per.point) {
+        range.y<-range(dataframe.results[[z]][[g]][[l]]$y)
+        range.y<-range.y
+        #print(range.y)
+      }
     }
   }
-}
-
-#range.x <- range(unlist(lapply(time.location.regurgitation, function(m) range(m$"x"))))
-#range.y <- range(unlist(lapply(time.location.regurgitation, function(m) range(m$"y"))))
-Extent <- t(cbind(range.x, range.y))
-Extent <- Extent + rep(c(-offset,offset),each=2)
-
-#jpeg(paste("Graphs/emigration bird ",id.freq,".jpg",sep=""),quality=100,height=800,width=800)
-
-#jpeg("Graphs/emigration bird id 851.jpg",quality=100,height=500,width=500)
-
-plot(crop(land_use,extent(Extent)), xlim=Extent[1,], ylim=Extent[2,],cex=1.5)
-
-for (z in 1:length(focal.patch)){
-  for (g in 1:num.sim.points.per.patch){
-    
-    for(l in 1:num.sim.per.point)
-    {
-      #Plot points where the animal moved
-      points(dataframe.results[[z]][[g]][[l]]$x,dataframe.results[[z]][[g]][[l]]$y,
-             pch=19,cex=0.5, type="b")
-      lines(dataframe.results[[z]][[g]][[l]]$x,dataframe.results[[z]][[g]][[l]]$y,
-            col=dataframe.results[[z]][[g]][[l]]$num.simulation,lwd=2)
+  
+  #range.x <- range(unlist(lapply(time.location.regurgitation, function(m) range(m$"x"))))
+  #range.y <- range(unlist(lapply(time.location.regurgitation, function(m) range(m$"y"))))
+  Extent <- t(cbind(range.x, range.y))
+  Extent <- Extent + rep(c(-offset,offset),each=2)
+  
+  #jpeg(paste("Graphs/emigration bird ",id.freq,".jpg",sep=""),quality=100,height=800,width=800)
+  
+  #jpeg("Graphs/emigration bird id 851.jpg",quality=100,height=500,width=500)
+  
+  plot(crop(land_use,extent(Extent)), xlim=Extent[1,], ylim=Extent[2,],cex=1.5)
+  
+  for (z in 1:length(focal.patch)){
+    for (g in 1:num.sim.points.per.patch){
       
-      #Ploints plot in yellow where the animal started and in red where the animal stopped
-      points(dataframe.results[[z]][[g]][[l]]$x[c(1,length(dataframe.results[[z]][[g]][[l]]$x))],
-             dataframe.results[[z]][[g]][[l]]$y[c(1,length(dataframe.results[[z]][[g]][[l]]$y))],
-             pch=19,col=c("coral","red"))
-      
+      for(l in 1:num.sim.per.point)
+      {
+        #Plot points where the animal moved
+        points(dataframe.results[[z]][[g]][[l]]$x,dataframe.results[[z]][[g]][[l]]$y,
+               pch=19,cex=0.5, type="b")
+        lines(dataframe.results[[z]][[g]][[l]]$x,dataframe.results[[z]][[g]][[l]]$y,
+              col=dataframe.results[[z]][[g]][[l]]$num.simulation,lwd=2)
+        
+        #Ploints plot in yellow where the animal started and in red where the animal stopped
+        points(dataframe.results[[z]][[g]][[l]]$x[c(1,length(dataframe.results[[z]][[g]][[l]]$x))],
+               dataframe.results[[z]][[g]][[l]]$y[c(1,length(dataframe.results[[z]][[g]][[l]]$y))],
+               pch=19,col=c("coral","red"))
+        
+      }
     }
   }
-}
-
-#legend("topright", legend=c("Starting point", "Ending point"),
-       #col=c("coral", "red"), cex=1.5,pch=16)
-
-#dev.off()
-
+  
+  #legend("topright", legend=c("Starting point", "Ending point"),
+  #col=c("coral", "red"), cex=1.5,pch=16)
+  
+  #dev.off()
+  
 }
 
 ####FUNCTION FOR OBTAINING INDIVIDUAL MAPS FOR THE SIMULATIONS MADE####
@@ -328,13 +363,13 @@ for (z in 1:length(focal.patch)){
 #map.full: full map with vegetation cover
 
 individual.map.simulations<-function(focal.patch=NA,
-                          num.sim.points.per.patch=NA,
-                          num.sim.per.point=NA,
-                          num.map.start=1,
-                          num.map.end=1,
-                          dataframe.results=NA,
-                          offset=NA,
-                          map.full=NA){
+                                     num.sim.points.per.patch=NA,
+                                     num.sim.per.point=NA,
+                                     num.map.start=1,
+                                     num.map.end=1,
+                                     dataframe.results=NA,
+                                     offset=NA,
+                                     map.full=NA){
   #I was trying to get the range of values of x and y coordinates but I could not do it. So I increased the offset so that I could plot all the points in the map.
   for (z in 1:length(focal.patch)){
     
@@ -434,8 +469,8 @@ raw.dataframe<-function(for.immigration="N",
   if(for.immigration=="Y"){
     database.simulations$immigrated<-0
   }
-
-
+  
+  
   #Paste all data bases
   for (z in 1:length(name.input.database)){
     
@@ -444,15 +479,15 @@ raw.dataframe<-function(for.immigration="N",
       for (g in 1:num.sim.points.per.patch){
         
         for(l in 1:num.sim.per.point)
-      {
-        
-        df<-name.input.database[[z]][[a]][[g]][[l]]
-        
-        database.simulations<-rbind(df,database.simulations)
-        
+        {
+          
+          df<-name.input.database[[z]][[a]][[g]][[l]]
+          
+          database.simulations<-rbind(df,database.simulations)
+          
+        }
       }
     }
-  }
   }
   
   
@@ -476,15 +511,19 @@ final.database<-function(for.immigration="N",
                          times=unique(name.input.database$time),
                          name.input.database=NA,
                          name.output.dataframe=NA){
-
-#Formating data base  
+  
+  #Formating data base  
   results.simulations <- name.input.database %>% 
     select(-raster.value) %>% 
     gather(fate,yes.no,same.patch:new.patch) %>% #Convert from wide to long
-    group_by(focal.patch,param.shape.step.length,param.habitat.utilization,time,fate) %>% 
+    group_by(focal.patch,patch.id.adam,param.shape.step.length,param.habitat.utilization,time,fate) %>% 
     summarise(count=sum(yes.no)) %>% #Count number of fruits thtat landed in the matrix, same patch or new patch
     ungroup() %>% 
-    spread(fate, count) #Convert from long to wide
+    spread(fate, count) %>%  #Convert from long to wide
+    inner_join(name.input.database %>% 
+                 select(focal.patch,patch.size,percent.forest,elevation,patch.id.adam) %>% 
+                 distinct(),
+               by=c("focal.patch","patch.id.adam"))
   
   #If the function is used for the immigration part, then it has to consider the immigration column generated
   if(for.immigration=="Y"){
@@ -501,7 +540,7 @@ final.database<-function(for.immigration="N",
     results.simulations<-cbind(results.simulations,
                                prop.table(as.matrix(results.simulations[,c("same.patch","matrix","new.patch")]),1) %>% 
                                  set_colnames(c("prop.same.patch","prop.matrix","prop.new.patch")))  #rename columns
-
+    
   }
   
   #Assign the data frame the name of the data frame I put at the beginning of the function
@@ -520,27 +559,31 @@ dispersal.distance<-function(focal.patch=NA,
   df<-name.input.database
   
   for (z in 1:length(name.input.database)){
+    
     for(a in 1:length(name.input.database[[z]])){
-    for (g in 1:num.sim.points.per.patch){
       
-      for(l in 1:num.sim.per.point)
-      {
-        #Create a column for the dispersal distance
-        #df[[z]][[g]][[l]]$disperal.distance<-0
+      for (g in 1:length(name.input.database[[z]][[a]])){
         
-        for (k in 2:nrow(df[[z]][[a]][[g]][[l]]))
-        #It will use the first xy values row and obtain the distance in the x y values of the n row of the data frame
-          df[[z]][[a]][[g]][[l]][k,"dispersal.distance"]<-pointDistance(df[[z]][[a]][[g]][[l]][1,c("x","y")], #Always select the first row since it is the starting point
-                                                                   df[[z]][[a]][[g]][[l]][k,c("x","y")], #Select row k
-                                                                   lonlat=F)
-        df[[z]][[a]][[g]][[l]][1,"dispersal.distance"]<-0
-        
-        #Assign the data frame the name of the data frame I put at the beginning of the function
-        assign(deparse(substitute(name.input.database)),
-               df, envir=.GlobalEnv)
+        for (l in 1:length(name.input.database[[z]][[a]][[g]]))
+          
+          for (q in 1:length(name.input.database[[z]][[a]][[g]][[l]]))
+          {
+            #Create a column for the dispersal distance
+            #df[[z]][[g]][[l]]$disperal.distance<-0
+            
+            for (k in 2:nrow(df[[z]][[a]][[g]][[l]][[q]]))
+              #It will use the first xy values row and obtain the distance in the x y values of the n row of the data frame
+              df[[z]][[a]][[g]][[l]][[q]][k,"dispersal.distance"]<-pointDistance(df[[z]][[a]][[g]][[l]][[q]][1,c("x","y")], #Always select the first row since it is the starting point
+                                                                                 df[[z]][[a]][[g]][[l]][[q]][k,c("x","y")], #Select row k
+                                                                                 lonlat=F)
+            df[[z]][[a]][[g]][[l]][[q]][1,"dispersal.distance"]<-0
+            
+            #Assign the data frame the name of the data frame I put at the beginning of the function
+            assign(deparse(substitute(name.input.database)),
+                   df, envir=.GlobalEnv)
+          }
       }
     }
-  }
   }
   
 }
