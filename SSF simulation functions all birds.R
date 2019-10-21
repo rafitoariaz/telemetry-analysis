@@ -1,3 +1,63 @@
+####FUNCTION FOR SIMULATE INDIVIDUAL MOVEMENT BEHAVIOR####
+simulate.ind.mov<-function(map.full=NA,
+                           repetitions=NA,
+                           movement.kernel=NA,
+                           habitat.kernel=NA,
+                           starting.point=NA,
+                           tot.num.steps=NA,
+                           focal.patch=NA,
+                           patch.id.adam=NA,
+                           test.new.coords=NA,
+                           map.full.labeled=NA){
+  
+  #tud <- wet_c #Copy the cropped raster map
+  tud <- map.full #Use the full raster map!
+  tud[] <- 0 #Putting 0's to map
+  
+  
+  #Here is obtaining the stud kernel for a specific point. It simulates n steps (72 in this example) using the movement (mk) and the habitat (hk) kernels and starting in a specific point (as.numeric) and then estimats the utilization distribution (utilization distribution is a probability distribution giving the probability density that an animal is found at a given point in space. Therefore, in each simulation all the values sum to 1).
+  
+  system.time(for(i in 1:repetitions) 
+    tud <- tud +
+      simulate_ud(movement.kernel,habitat.kernel,starting.point,n= tot.num.steps)) 
+  #Since we did x simulations (in this case 5000) and the probability of each simulation summed to 1, all the cells now sum 5000. We have no normilize the information
+  tud[] <- tud[] / sum(tud[]) 
+  
+  #We can use this command to see the histogram of probabilities. 
+  #hist(tud.without.zeros,breaks=1000)
+  
+  #Sample from the probabilites in the tud kernel with weights equal to the probability values of each cell
+  sampCellProb<-sample(x=1:length(tud[]),prob=tud[], size=1)
+  
+  #Obtain coordinates from sampled cell. ***IF THERE ARE MORE CELLS THAT HAVE THE SAME PROBABILITY, I WILL CHOOSE THE FIRST ROW. IS THAT THE WAY TO DO A RANDOM SAMPLE?
+  new.coord<<-xyFromCell(tud, sampCellProb)[1,]
+  points(starting.point[1],starting.point[2],col=k)
+  test<<-cellFromXY(map.full.labeled,new.coord)
+  
+  starting.coord.x<-starting.point[,"x"]
+  #colnames(starting.coord.x)<-"starting.coord.x"
+  
+  starting.coord.y<-starting.point[,"y"]
+  #colnames(starting.coord.y)<-"starting.coord.y"
+  
+  test.new.coords<<-rbind(test.new.coords,
+                          data.frame(focal.patch=focal.patch,
+                                     patch.id.adam=patch.id.adam,
+                                     starting.coord.x=starting.coord.x, #starting.point %>% 
+                                       #select(x) %>% 
+                                       #rename(starting.coord.x=x),
+                                     starting.coord.y=starting.coord.y,#starting.point %>% 
+                                       #select(y) %>% 
+                                       #rename(starting.coord.y=y),
+                                     new.coord.x=new.coord[1],
+                                     new.coord.y=new.coord[2],
+                                     test.in.new.coord=raster::extract(map.full.labeled,
+                                                                       cbind(new.coord[1],new.coord[2]))))
+  
+  print(paste("Completed simulation step",k))
+}
+
+
 ####FUNCTION FOR SIMULATING MOVEMENT BEHAVIOR OF INDIVIDUALS####
 #This function simlates movement behavior of an animal and needs the following information 
 #focal.patch: the patches where the simulations will be made
@@ -55,9 +115,11 @@ simulate.movement<-function(focal.patch=NA,
   #Create a data frame for storing the proportion of points that landed and not landed on the map
   test.new.coords<<-data.frame(focal.patch=0,
                                patch.id.adam=0,
-                               x=0,
-                               y=0,
-                               test=0)
+                               starting.coord.x=0,
+                               starting.coord.y=0,
+                               new.coord.x=0,
+                               new.coord.y=0,
+                               test.in.new.coord=0)
   
   for (q in 1:nrow(parameters.simulations)){
     
@@ -95,6 +157,8 @@ simulate.movement<-function(focal.patch=NA,
         
         #It will do a list every time a simulation is made in each patch
         time.location.regurgitation[[q]][[z]][[g]]<<-list()
+        
+        plot(map.cropped)
         
         for (l in 1:num.sim.per.point){
           
@@ -140,83 +204,52 @@ simulate.movement<-function(focal.patch=NA,
           }
           
           
-          
           for (k in 1:tot.num.steps){ #***CHECK IF  HAVE TO PUT 1 OR 2. I WOULD SAY 2 BUT WHEN I PUT IT IT DOES NOT CONSIDER THE 2 AND STARTS THE SEQUENCE AT 3 
-            
-            #tud <- wet_c #Copy the cropped raster map
-            tud <- map.full #Use the full raster map!
-            tud[] <- 0 #Putting 0's to map
-        
-            
-            #Here is obtaining the stud kernel for a specific point. It simulates n steps (72 in this example) using the movement (mk) and the habitat (hk) kernels and starting in a specific point (as.numeric) and then estimats the utilization distribution (utilization distribution is a probability distribution giving the probability density that an animal is found at a given point in space. Therefore, in each simulation all the values sum to 1).
             
             #At the end of the simulation I store the next point in which the bird moved (starting.point). So here I am saying that IF I am simulating the first step, I will do the kernel from the initial.starting.point. ELSE: if I am doing the kernel for the following points after doing the kernel for the first point, I will use the starting.point that was selected at the end of this chunk
             if (k==1){
               repeat{
-              system.time(for(i in 1:1e3) 
-                tud <- tud +
-                  simulate_ud(movement.kernel,habitat.kernel,initial.starting.point,n= tot.num.steps)) 
-                #Since we did x simulations (in this case 5000) and the probability of each simulation summed to 1, all the cells now sum 5000. We have no normilize the information
-                tud[] <- tud[] / sum(tud[]) 
+                simulate.ind.mov(map.full=map.full,
+                                 repetitions=1000,
+                                 movement.kernel=movement.kernel,
+                                 habitat.kernel=habitat.kernel,
+                                 starting.point=initial.starting.point,
+                                 tot.num.steps=tot.num.steps,
+                                 focal.patch=focal.patch, 
+                                 patch.id.adam=landscape.variables$Patch,
+                                 test.new.coords=test.new.coords,
+                                 map.full.labeled=land_use_raster_labeled) #
                 
-                #We can use this command to see the histogram of probabilities. 
-                #hist(tud.without.zeros,breaks=1000)
                 
-                #Sample from the probabilites in the tud kernel with weights equal to the probability values of each cell
-                sampCellProb<-sample(x=1:length(tud[]),prob=tud[], size=1)
-                
-                #Obtain coordinates from sampled cell. ***IF THERE ARE MORE CELLS THAT HAVE THE SAME PROBABILITY, I WILL CHOOSE THE FIRST ROW. IS THAT THE WAY TO DO A RANDOM SAMPLE?
-                new.coord<<-xyFromCell(tud, sampCellProb)[1,]
-                
-                test<-cellFromXY(land_use_raster_labeled,new.coord)
-                
-                test.new.coords<<-rbind(test.new.coords,
-                                        data.frame(focal.patch=time.location.regurgitation[[q]][[z]][[g]][[l]]$focal.patch,
-                                             patch.id.adam=time.location.regurgitation[[q]][[z]][[g]][[l]]$patch.id.adam,
-                                             x=initial.starting.point[1],
-                                             y=initial.starting.point[2],
-                                             test=is.na(land_use_raster_labeled[test])))
-
                 if (is.na(land_use_raster_labeled[test])=="FALSE") {
+                  starting.point<<-data.frame(x=new.coord[1],y=new.coord[2])
+                  print(paste("Break",k))
                   break
                 }
                 
-                }
-                
-                }else{
-              repeat{
-              system.time(for(i in 1:1e3) 
-                tud <- tud +
-                  simulate_ud(movement.kernel,habitat.kernel,starting.point,n= tot.num.steps)) 
-            
-            
-            #Since we did x simulations (in this case 5000) and the probability of each simulation summed to 1, all the cells now sum 5000. We have no normilize the information
-            tud[] <- tud[] / sum(tud[]) 
-            
-            #We can use this command to see the histogram of probabilities. 
-            #hist(tud.without.zeros,breaks=1000)
-            
-            #Sample from the probabilites in the tud kernel with weights equal to the probability values of each cell
-            sampCellProb<-sample(x=1:length(tud[]),prob=tud[], size=1)
-            
-            #Obtain coordinates from sampled cell. ***IF THERE ARE MORE CELLS THAT HAVE THE SAME PROBABILITY, I WILL CHOOSE THE FIRST ROW. IS THAT THE WAY TO DO A RANDOM SAMPLE?
-            new.coord<<-xyFromCell(tud, sampCellProb)[1,]
-            
-            test<-cellFromXY(land_use_raster_labeled,new.coord)
-            
-            test.new.coords<<-rbind(test.new.coords,
-                                    data.frame(focal.patch=time.location.regurgitation[[q]][[z]][[g]][[l]]$focal.patch,
-                                               patch.id.adam=time.location.regurgitation[[q]][[z]][[g]][[l]]$patch.id.adam,
-                                               x=initial.starting.point[1],
-                                               y=initial.starting.point[2],
-                                               test=is.na(land_use_raster_labeled[test])))
-            
-            
-            if (is.na(land_use_raster_labeled[test])=="FALSE") {
-              break
-            }
               }
+              
+            }else{
+              repeat{
+                simulate.ind.mov(map.full=map.full,
+                                 repetitions=1000,
+                                 movement.kernel=movement.kernel,
+                                 habitat.kernel=habitat.kernel,
+                                 starting.point=starting.point,
+                                 tot.num.steps=tot.num.steps,
+                                 focal.patch=focal.patch, 
+                                 patch.id.adam=landscape.variables$Patch,
+                                 test.new.coords=test.new.coords,
+                                 map.full.labeled=land_use_raster_labeled)
+                
+                if (is.na(land_use_raster_labeled[test])=="FALSE") {
+                  print(paste("Breaking",k))
+                  starting.point<<-data.frame(x=new.coord[1],y=new.coord[2])
+                  break
                 }
+              }
+            }
+            
               
             
             #TEST. data frame with various cells** I NEED TO PUT TO WORK THIS FUNCTION SINCE IT PUT ME AN ERROR THAT THERE ARE MANY LOCATIONS WITH THE SAME PROBABILITY
@@ -265,7 +298,7 @@ simulate.movement<-function(focal.patch=NA,
             
             
             #Convert new.coord to numeric so that it can be used again in the simulation
-            starting.point<-new.coord
+            #starting.point<-new.coord
             #as.numeric(xyFromCell(tud, cell.sampled))
             
             match(z,focal.patch)
