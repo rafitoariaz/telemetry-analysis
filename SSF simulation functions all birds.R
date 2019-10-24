@@ -1,4 +1,14 @@
 ####FUNCTION FOR SIMULATE INDIVIDUAL MOVEMENT BEHAVIOR####
+#map.full=full raster map of all the area
+#repetitions=number of simulations made from a starting point to estimate the transient uilization distribution
+#movement.kernel=the movement kernel that will be used for the simulation
+#habitat.kernel= the habitat kernel that will be used for the simulation
+#starting.point=the x and y coordinates where the simulationw will be made
+#tot.num.steps=the total number of steps that will be simulated
+#focal.patch= the id of the focal patch where the simulation will be made
+#patch.id.adam= the id of the patch that was given by Adam
+#test.new.coords= the data frame that will contain the number of times that the simulation landed outside the raster map
+#map.full.labeled= complete raster map labaled (the same as map.full but labeled)
 simulate.ind.mov<-function(map.full=NA,
                            repetitions=NA,
                            movement.kernel=NA,
@@ -113,7 +123,7 @@ simulate.movement<-function(focal.patch=NA,
                         patch.id.adam=0) 
   
   #Create a data frame for storing the proportion of points that landed and not landed on the map
-  test.new.coords<<-data.frame(focal.patch=0,
+  test.new.coords.final<<-test.new.coords<<-data.frame(focal.patch=0,
                                patch.id.adam=0,
                                starting.coord.x=0,
                                starting.coord.y=0,
@@ -210,7 +220,7 @@ simulate.movement<-function(focal.patch=NA,
             if (k==1){
               repeat{
                 simulate.ind.mov(map.full=map.full,
-                                 repetitions=1000,
+                                 repetitions=100,
                                  movement.kernel=movement.kernel,
                                  habitat.kernel=habitat.kernel,
                                  starting.point=initial.starting.point,
@@ -232,7 +242,7 @@ simulate.movement<-function(focal.patch=NA,
             }else{
               repeat{
                 simulate.ind.mov(map.full=map.full,
-                                 repetitions=1000,
+                                 repetitions=100,
                                  movement.kernel=movement.kernel,
                                  habitat.kernel=habitat.kernel,
                                  starting.point=starting.point,
@@ -328,6 +338,7 @@ simulate.movement<-function(focal.patch=NA,
             assign(deparse(substitute(name.output.list)),time.location.regurgitation, envir=.GlobalEnv)
             
             
+            
             #Print information
             #print(paste((sum(1:z)*g*l*k),"th simulation of",length(focal.patch)*length(num.sim.points.per.patch)*length(num.sim.per.point)*length(tot.num.steps),"simulations"))
             print(paste("Patch",z,"of",length(focal.patch),"patches. Patch id analyzed now:",focal.patch[z]))
@@ -336,7 +347,13 @@ simulate.movement<-function(focal.patch=NA,
             #print(paste("Point",g,"of",num.sim.points.per.patch,"starting points per patch"))
             print(paste("Point",l,"of",num.sim.per.point,"simulations in the same starting point"))
             print(paste("Step",k,"of",tot.num.steps,"steps"))
-          }}}}}
+          }
+          
+        }
+        test.new.coords.final<<-rbind(test.new.coords.final,test.new.coords)
+      }
+    }
+    }
   
   time.location.regurgitation
   
