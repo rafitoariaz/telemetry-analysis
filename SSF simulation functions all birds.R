@@ -9,6 +9,9 @@
 #patch.id.adam= the id of the patch that was given by Adam
 #test.new.coords= the data frame that will contain the number of times that the simulation landed outside the raster map
 #map.full.labeled= complete raster map labaled (the same as map.full but labeled)
+#for.null.model.1= I will select random step lengths and turning angles, so I am doing a specific process for achivieng this model
+#step.length.vector= vector with the step length of all individuals
+#turning.angle.vector= vector with the turning angle of all individuals
 simulate.ind.mov<-function(map.full=NA,
                            repetitions=NA,
                            movement.kernel=NA,
@@ -18,18 +21,46 @@ simulate.ind.mov<-function(map.full=NA,
                            focal.patch=NA,
                            patch.id.adam=NA,
                            test.new.coords=NA,
-                           map.full.labeled=NA){
-   
+                           map.full.labeled=NA,
+                           for.null.model.1="No", #Or Yes
+                           step.length.vector=NA,
+                           turning.angle.vector=NA){
+  
   #tud <- wet_c #Copy the cropped raster map
   tud <- map.full #Use the full raster map!
   tud[] <- 0 #Putting 0's to map
   
+  if (for.null.model.1=="Yes"){
+    
+    test<-data.frame(LOCATION.X=1:repetitions,
+                       LOCATION.Y=1:repetitions,
+                       cell=1:repetitions)
+    
+    for (i in 1:repetitions){
+      
+      random.step.length<-sample(seq(from=min(step.length.vector),to=max(step.length.vector),by=1),size=1)
+      #random.step.length<-sample(d$step.lenght,size=1,prob=d$weight)
+      
+      random.angle<-sample(seq(from=min(turning.angle.vector),to=max(turning.angle.vector),by=1),size=1)
+      
+      
+      test$LOCATION.X[[i]]<-(cos(NISTdegTOradian(random.angle))*random.step.length)+starting.point[,1]
+      test$LOCATION.Y[[i]]<-(sin(NISTdegTOradian(random.angle))*random.step.length)+starting.point[,2]
+      
+      
+      test$cell[i]<-cellFromXY(tud,cbind(test$LOCATION.X[i],test$LOCATION.Y[i]))
+      tud[test$cell[i]]<-tud[test$cell[i]]+1
+    }
+    
+    
+  }else{
   
   #Here is obtaining the stud kernel for a specific point. It simulates n steps (72 in this example) using the movement (mk) and the habitat (hk) kernels and starting in a specific point (as.numeric) and then estimats the utilization distribution (utilization distribution is a probability distribution giving the probability density that an animal is found at a given point in space. Therefore, in each simulation all the values sum to 1).
   
   system.time(for(i in 1:repetitions) 
     tud <- tud +
       simulate_ud(movement.kernel,habitat.kernel,starting.point,n= tot.num.steps)) 
+  }
   #Since we did x simulations (in this case 5000) and the probability of each simulation summed to 1, all the cells now sum 5000. We have no normilize the information
   tud[] <- tud[] / sum(tud[]) 
   
