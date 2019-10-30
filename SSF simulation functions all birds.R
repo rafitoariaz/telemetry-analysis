@@ -19,7 +19,7 @@ simulate.ind.mov<-function(map.full=NA,
                            patch.id.adam=NA,
                            test.new.coords=NA,
                            map.full.labeled=NA){
-  
+   
   #tud <- wet_c #Copy the cropped raster map
   tud <- map.full #Use the full raster map!
   tud[] <- 0 #Putting 0's to map
