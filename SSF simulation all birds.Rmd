@@ -8,6 +8,12 @@ output: html_document
 #MULTIPLE BIRDS
 
 ## FORMAT DATA BASE FOR ANALYSIS
+#PENDING ACTIVITIES
+  #When I am simulating the movement behavior of animals, sometimes the next point lands in a coordinate where there is no information in the raster map. I did a code that it repeats the simulation of calculating a new point every time it lands outside the raster map and it is working when I am running the code individually. However, when I run the code for doing the calculations in parallel or in different cores, it is still not working and I do not know why
+  #I need to register how many times the code is doing a simulation when it lands outside the raster map. However, it is working when I run the code individually but it is not working when I run the code in parallel. The data frame it is called test.new.coords
+  #When I use the movement_kernel function in the amt package, I cannot fix a specific value for the von Misses distribution parameter, so I do not know very well what value is taking when I use the function. 
+  #When I estimate the ssf, it generates random steps to compare them with the actual steps. The problem is that every time I run the code from scratch it makes new random steps, so the parameters in the SSF are different each time
+  #I need to set.seed in the simulation code of the movement behavior. 
 
 http://tlocoh.r-forge.r-project.org/tips/isopleth_overlap_auto.html
 
@@ -41,7 +47,11 @@ library("sp")
 library("stats")
 #library("knitr")
 library("ggpubr")
+library("tibble")
 ```
+
+#Problems
+*When I do the simulations with the movement_kernel function in amt package, I cannot fix the von Misses distribution for the turning angle, so I do not know
 
 ```{r}
 #Convert the Rmd file to R file so that it can be read on the super computer
@@ -545,6 +555,13 @@ for (i in 1:nrow(von.mises.parameters)){
   
 }
 
+for (i in 1:nrow(von.mises.parameters)){
+  
+plot(sort(unique(tracking.database.unlisted %>% mutate(ta_=deg2rad(ta_)) %>% select(ta_) %>% .$ta_)),dvmises(sort(unique(tracking.database.unlisted %>% mutate(ta_=deg2rad(ta_)) %>% select(ta_) %>% .$ta_)),kappa=as.numeric(von.mises.parameters[i,"kappa"])),type="l",col=i)
+  
+  par(new=TRUE)
+  
+}
 #dev.off()
 rm(borrar)
 ```
@@ -586,7 +603,7 @@ tracking.database.unlisted %>%
 
 library("nlme")
 #Model without random structure
-summary(mod.1<-gls(log_sl_ ~logpatch_size+percent_forest+elevation,method = "REML", data = tracking.database.unlisted))
+#summary(mod.1<-gls(log_sl_ ~logpatch_size+percent_forest+elevation,method = "REML", data = tracking.database.unlisted))
 
 
 #GLMM nesting frequency
@@ -739,11 +756,118 @@ for (i in 1:length(forest.raster.cropped)){
     filter(FREQ==forest.raster.cropped[[i]]$id.freq) %>% 
     distinct()
   
+  #NULL MODEL 1. OBTAIN THE AREA OF THE SAME PATCH, MATRIX AND NEW PATCH IN AN A RADIUS (WHICH CORRESPONDS TO HALF OF THE LARGEST DISTANE BETWEEN TWO PINT IN THE HOME RANGE SIZE OF ALL BIRDS)
+  
+  plot(land_use_raster_labeled,main=paste0("Freq ",forest.raster.cropped[[i]]$id.freq,". Map ",i))
+  points(forest.raster.cropped[[i]]$focal.patch.xy)
+
+  
+  ###NEW CODE
+  #I will obtain the raster map with the buffer of a/2 that I estimated from the first chapter
+  #Off is the amount of meters I would like to expand from the xy coordinates of the focal patch
+  off<-3500
+  
+  #Make an extent object to crop the map to an specific extent
+  ext<-extent(forest.raster.cropped[[i]]$focal.patch.xy[,"X"]-off,forest.raster.cropped[[i]]$focal.patch.xy[,"X"]+off,forest.raster.cropped[[i]]$focal.patch.xy[,"Y"]-off,forest.raster.cropped[[i]]$focal.patch.xy[,"Y"]+off)
+  
+  #Crop full raster labeled map
+  map.only.focal.patch<-crop(land_use_raster_labeled,ext)
+  
+  #If the id of the labeled raster map is different from the id of the focal patch, then set to NA
+  map.only.focal.patch[map.only.focal.patch!=forest.raster.cropped[[i]]$focal.patch.label.complete.map]<-NA
+  
+  #Make a buffer around the focal patch equal to a/2 (value obtained from the first chapter)
+  map.only.focal.patch<-buffer(map.only.focal.patch,width=1695.15/2)
+  
+  #Obtained the cropped raster map
+  forest.raster.cropped[[i]]$forest.raster.cropped.labeled.null.model.1<-land_use_raster_labeled*map.only.focal.patch
+  
+  #Plot cropped raster map
+  plot(forest.raster.cropped[[i]]$forest.raster.cropped.labeled.null.model.1,main=paste0("Freq ",forest.raster.cropped[[i]]$id.freq,". Map ",i))
+  points(forest.raster.cropped[[i]]$focal.patch.xy)
+  
+  
+  #The next step is to obtain the proportion of forest of the focal patch, the matrix and the new patch
+  #Saving the cropped map in an object
+  sum.total.landscape<-prop.matrix<-prop.new.patch<-prop.same.patch<-forest.raster.cropped[[i]]$forest.raster.cropped.labeled.null.model.1
+  
+  #All values that have a number will be set to 0 so that I can obtain the total area in the buffer
+  sum.total.landscape[sum.total.landscape>=0]<-1
+  sum.total.landscape<-sum(sum.total.landscape[],na.rm=T)
+  
+  #Now I will obtain the proportion of forest in the same patch
+  #Set to 0 any value that is different from the focal patch
+  prop.same.patch[prop.same.patch!=forest.raster.cropped[[i]]$focal.patch.label.complete.map]<-0
+  
+  #Set to 1 any value that is equal to the focal patch
+  prop.same.patch[prop.same.patch==forest.raster.cropped[[i]]$focal.patch.label.complete.map]<-1
+  
+  #Plot map
+  plot(prop.same.patch,main=paste0("Freq ",forest.raster.cropped[[i]]$id.freq," focal patch. Map ",i))
+  
+  #Obtain the proportion of forest of the same aptch
+  prop.same.patch<-sum(prop.same.patch[],na.rm=T)/sum.total.landscape
+  
+  #I will obtain the proportion of area that is matrix
+  #Because I need to set to 1 any value that is matrix, then first I need to change any patch that is labeled with 1 to any other value. In this case, I decided to revalue 1 to 2
+  prop.matrix[prop.matrix==1]<-2
+  
+  #Now I will set the matrix value (0) to 1 so that I can sum it
+  prop.matrix[prop.matrix==0]<-1
+  
+  #I will set any value greater than 1 to 0
+  prop.matrix[prop.matrix>1]<-0
+  
+  #Plot map
+  plot(prop.matrix,main=paste0("Freq ",forest.raster.cropped[[i]]$id.freq," matrix. Map ",i))
+  
+  #OBtain the proportion fo matrix
+  prop.matrix<-sum(prop.matrix[],na.rm=T)/sum.total.landscape
+  
+  
+  #Now I will obtain the proportion of forest that is different from focal patch
+  #First I will convert the matrix value (0) to the value of the focal patch because in the next lines I will set to 0 the value of the focal patch so that it is not considered in the sum
+  prop.new.patch[prop.new.patch==0]<-forest.raster.cropped[[i]]$focal.patch.label.complete.map
+  
+  #Any patch that is different to the focal patch will be set to 1
+  prop.new.patch[prop.new.patch!=forest.raster.cropped[[i]]$focal.patch.label.complete.map]<-1
+  
+  #Any patch that is equal to the focal patch will be set to 0
+  prop.new.patch[prop.new.patch==forest.raster.cropped[[i]]$focal.patch.label.complete.map]<-0
+  
+  #Plot map
+  plot(prop.new.patch,main=paste0("Freq ",forest.raster.cropped[[i]]$id.freq," new patch. Map ",i))
+
+  #Estimate the proportion of area of new patches
+  prop.new.patch<-sum(prop.new.patch[],na.rm=T)/sum.total.landscape
+  
+  #Make a data frame with the proportion of forest of each type of vegetation
+  forest.raster.cropped[[i]]$prop.landscapes.null.model.1<-data.frame(patch.id.adam=forest.raster.cropped[[i]]$landscape.variables$Patch,
+                                                                      model="null.model.1",
+                                                                      prop.same.patch=prop.same.patch,
+                                                                      prop.matrix=prop.matrix,
+                                                           prop.new.patch=prop.new.patch)
+  
+  print(forest.raster.cropped[[i]]$prop.landscapes.null.model.1)
+  
+  print(paste("Patch ",i," of ",length(forest.raster.cropped)," patches. Freq ",forest.raster.cropped[[i]]$id.freq,sep=""))
+  
+  #Printing information
+  print(sum(forest.raster.cropped[[i]]$prop.landscapes.null.model.1[,c("prop.same.patch","prop.matrix","prop.new.patch")]))
+
 }
 
 
 
-rm(structure)
+  #PROBLEM WITH i 10 FREQUENCY 881: The id of the patch according to Adam is 26, and the focal patch of the labeled full raster mapo is 96. the patch is very big. Ask Adam if that is correct. Maybe the raster map does not have the splits between patches so it is considering a big patch as only one
+  #PROBLEM WITH i 11 FREQUENCY 942: The id of the patch according to Adam is 53, and the focal patch of the labeled full raster mapo is 96. the patch is very big. Ask Adam if that is correct. Maybe the raster map does not have the splits between patches so it is considering a big patch as only one
+  #PROBLEM WITH i 13 FREQUENCY 392: The id of the patch according to Adam is 32, and the focal patch of the labeled full raster mapo is 96. the patch is very big. Ask Adam if that is correct. Maybe the raster map does not have the splits between patches so it is considering a big patch as only one
+  #PROBLEM WITH i  F17REQUENCY 631: The id of the patch according to Adam is 32, and the focal patch of the labeled full raster mapo is 96. the patch is very big. Ask Adam if that is correct. Maybe the raster map does not have the splits between patches so it is considering a big patch as only one
+  
+###***SEE WHY IT IS NOTOT ESTIMATING WELL THE PROPORTION OF FOREST IN EACH LANDSCAPE
+  #WRITE DOWN THE INSTRUCTION FOR THE CODE I JUST WROTE
+
+rm(structure,map.only.focal.patch,sum.total.landscape,prop.same.patch,prop.matrix,prop.new.patch,ext,off)
 ```
 
 
@@ -777,6 +901,7 @@ parameters.simulations %>%
 
 ```{r}
 
+#Looking where is the focal patch in the landscape
 for (i in 1:length(forest.raster.cropped)){
  
   map<-land_use_raster_labeled
@@ -989,7 +1114,7 @@ for (i in 1:length(forest.raster.cropped)){
  #Plot point of a specific sampled patch
   plot(land_use_raster)
  
-  points(forest.raster.cropped[[11]]$focal.patch.xy,pch=16)
+  points(forest.raster.cropped[[22]]$focal.patch.xy,pch=16)
 
 ```
 
@@ -1017,11 +1142,11 @@ registerDoParallel(detectCores())
 #1,2,4,8,13,15,17,18
 #for (i in 1:nrow(parameters.simulations)){
 
-  results.simulations.list <- foreach (i= c(1:6,8,9,11:20,22:23), #1:nrow(parameters.simulations),
+  results.simulations.list <- foreach (i= c(1:6,8,9,11:20,22:23), #c(1:6,8,9,11:20,22:23), #11 #1:nrow(parameters.simulations),
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
-                  tot.num.minutes=15,
+                  tot.num.minutes=20,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations.model,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
@@ -1099,6 +1224,10 @@ results.simulations.list <- dget("results.simulations.list")
 ```
 
 
+```{r}
+test.new.coords
+```
+
 
 ```{r}
 #Obtain data base with values aggregated by time and showing the proportion of fruit in each faith by time. ###***I DO NOT KNOW WELL HOW AM I GOING TO DO THIS ANALYSIS, SO I DO NOT KNOW WELL THE STRUCTURE OF THE DATA BASE. sPECIFICALLY, I DO NOT KNOW IF I HAVE TO INCLUDE THE PARAMETERS VALUES
@@ -1109,15 +1238,79 @@ results.emigration <- final.database(name.input.database=results.simulations.df,
 ```
 
 
+
+
+```{r}
+plot(land_use_raster)
+points(results.simulations.df$x,results.simulations.df$y,col=results.simulations.df$patch.id.adam)
+```
+
+```{r}
+#I will do a chi test to each of the simulation I made
+#I need a data frame with the proportion of vegetation forest for each sampled patch
+prop.null.model.1<-forest.raster.cropped[[1]]$prop.landscapes.null.model.1
+
+for (i in 2:length(forest.raster.cropped)){
+
+prop.null.model.1<-rbind(prop.null.model.1,forest.raster.cropped[[i]]$prop.landscapes.null.model.1)
+  
+}
+
+
+#Data frame with information for chi test
+chi.test.prop<-results.emigration %>% 
+  select(patch.id.adam,time,prop.same.patch,prop.matrix,prop.new.patch) %>% 
+  add_column(model = "simulation", .after = "patch.id.adam") %>% 
+  mutate(p.value=0)
+  #bind_rows(prop.null.model.1) 
+
+#chi.test.prop[is.na(chi.test.prop)=="TRUE"]<-0
+
+
+#Do the chi test for each of the rows (which reflects each of the simulations)
+for (i in 1:nrow(chi.test.prop)){
+  
+  #Obtain the id of the patch that Adam gave of the line to analyze
+  patch<-chi.test.prop[i,"patch.id.adam"]
+  
+  #Select the line
+  d<- chi.test.prop[i,] %>% 
+    select("prop.same.patch","prop.matrix","prop.new.patch") #%>% 
+    #bind_rows(prop.null.model.1 %>% 
+     #           filter(patch.id.adam==patch) %>%
+      #          select("prop.same.patch","prop.matrix","prop.new.patch") %>% 
+       #         distinct())
+ 
+  #Do the chi test and store the value
+  chi.test.prop[i,"p.value"]<-chisq.test(as.vector(t(d)),p=t(prop.null.model.1 %>% 
+                filter(patch.id.adam==patch) %>%
+                select("prop.same.patch","prop.matrix","prop.new.patch") %>% 
+                distinct()))$p.value #The reference distribution is the proportion of each vegetal cover in each landscape, so I am obtaining that information for each patch
+  
+}
+
+chi.test.prop %>% filter(p.value>0.05)
+
+```
+
+
+
 ```{r}
 #LMM for testing differences in the proportion of seeds that were dispersed to different fates
-test.proportions<-results.emigration %>% 
+summary(test.proportions<-results.emigration %>% 
   mutate(id=paste(focal.patch,patch.id.adam,sep=".")) %>% 
   select(id,prop.same.patch,prop.matrix,prop.new.patch)  %>% 
   gather(fate,proportion,prop.same.patch:prop.new.patch) %>% 
-  lme(asin(sqrt(proportion))~fate,random = ~1 | id,data=.)
+  lme(asin(sqrt(proportion))~fate,random = ~1 | id,data=.))
 
-summary(test.proportions)
+summary(test.proportions<-results.emigration %>% 
+  mutate(id=paste(focal.patch,patch.id.adam,sep=".")) %>% 
+  select(id,prop.same.patch,prop.matrix,prop.new.patch)  %>% 
+  gather(fate,proportion,prop.same.patch:prop.new.patch) %>% 
+    mutate(fate=relevel(factor(fate), ref = 3)) %>% 
+  lme(asin(sqrt(proportion))~fate,random = ~1 | id,data=.))
+
+
 
 #Graph of proportion of seed by fate
 results.emigration %>% 
@@ -1148,6 +1341,8 @@ rm(test.proportions)
 #Anaylsis of the porportion of fruits in the landscape
 results.emigration %>% 
   select(-c(focal.patch,patch.id.adam,matrix,new.patch,same.patch)) %>% 
+  mutate(patch.size=log(patch.size)) %>% 
+  rename(log.patch.size=patch.size) %>% 
   ggpairs(upper=list(continuous="cor"),lower=list(continuous="smooth"))
 
 results.emigration<-results.emigration %>% 
@@ -1361,7 +1556,7 @@ results.simulations.dispersal.distance.df<-results.simulations.dispersal.distanc
 
 results.simulations.dispersal.distance.df%>% 
   filter(same.patch==1 | new.patch==1) %>% #This only considers seed dispersal to places where it is likely that it will germinate
-  select(log.dispersal.distance,param.shape.step.length,param.habitat.utilization,time,log.patch.size,percent.forest,elevation) %>%
+  select(log.dispersal.distance,param.scale.step.length,param.habitat.utilization,time,log.patch.size,percent.forest,elevation) %>%
   ggpairs(upper=list(continuous="smooth"),lower=list(continuous="cor"))
 
 
@@ -1395,7 +1590,7 @@ summary(mod.5 <- update(mod.4,.~. -scale(log.patch.size)))
 #Seed dspersal distance within the same patch
 results.simulations.dispersal.distance.df %>% 
   filter(same.patch==1) %>% #This only considers seed dispersal to places where it is likely that it will germinate
-  select(log.dispersal.distance,param.shape.step.length,param.habitat.utilization,time,log.patch.size,percent.forest,elevation) %>%
+  select(log.dispersal.distance,param.scale.step.length,param.habitat.utilization,time,log.patch.size,percent.forest,elevation) %>%
   ggpairs(upper=list(continuous="smooth"),lower=list(continuous="cor"))
 
 
@@ -1428,7 +1623,7 @@ summary(mod.5 <- update(mod.4,.~. -scale(param.shape.step.length)))
 
 results.simulations.dispersal.distance.df %>% 
   filter(new.patch==1) %>% #This only considers seed dispersal to places where it is likely that it will germinate
-  select(log.dispersal.distance,param.shape.step.length,param.habitat.utilization,time,log.patch.size,percent.forest,elevation) %>%
+  select(log.dispersal.distance,param.scale.step.length,param.habitat.utilization,time,log.patch.size,percent.forest,elevation) %>%
   ggpairs(upper=list(continuous="smooth"),lower=list(continuous="cor"))
 
 
@@ -1440,7 +1635,7 @@ summary(mod.1<-gls(log.dispersal.distance ~scale(param.shape.step.length) + scal
 
 
 #GLMM nesting frequency
-summary(mod.2<-lme(log.dispersal.distance ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.simulations.dispersal.distance.df %>% 
+summary(mod.2<-lme(log.dispersal.distance ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.simulations.dispersal.distance.df %>% 
   filter(new.patch==1) %>% mutate(id=paste(patch.id.adam,focal.patch),
                                                             log.dispersal.distance=log(dispersal.distance+1),method="REML")))
 
@@ -1473,7 +1668,7 @@ results.simulations.dispersal.distance.df %>%
 ```{r}
 #save.image("borrar.RData")
 source("SSF simulation functions all birds.R")
-load("borrar.RData")
+#load("borrar.RData")
 #for (i in 1:length(forest.raster.cropped)){
 #for (i in c(1,2,4,8,9)){ #not included: 5
 for (i in c(10)){ #not included: 4,9,11,13
