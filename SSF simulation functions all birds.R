@@ -36,10 +36,22 @@ simulate.ind.mov<-function(map.full=NA,
                        LOCATION.Y=1:repetitions,
                        cell=1:repetitions)
     
+    d<-data.frame(step.lenght=step.length.vector) 
+    d$breaks<-cut(d$step.lenght,
+                  breaks=c(0,10,20,50,100,1000),labels=F)
+                  #breaks=c(seq(from=min(step.length.vector),
+                  #                           to=max(step.length.vector),
+                               #by=1)),labels=F)
+    
+    d<-data.frame(table(d$breaks)) %>% 
+      rename(breaks=Var1,weight=Freq) %>% 
+      mutate(breaks=as.numeric(breaks)) %>% 
+      inner_join(d,by="breaks")
+    
     for (i in 1:repetitions){
       
-      random.step.length<-sample(seq(from=min(step.length.vector),to=max(step.length.vector),by=1),size=1)
-      #random.step.length<-sample(d$step.lenght,size=1,prob=d$weight)
+      #random.step.length<-sample(seq(from=min(step.length.vector),to=max(step.length.vector),by=1),size=1)
+      random.step.length<-sample(d$step.lenght,size=1,prob=d$weight)
       
       random.angle<-sample(seq(from=min(turning.angle.vector),to=max(turning.angle.vector),by=1),size=1)
       
@@ -60,6 +72,7 @@ simulate.ind.mov<-function(map.full=NA,
   system.time(for(i in 1:repetitions) 
     tud <- tud +
       simulate_ud(movement.kernel,habitat.kernel,starting.point,n= tot.num.steps)) 
+      
   }
   #Since we did x simulations (in this case 5000) and the probability of each simulation summed to 1, all the cells now sum 5000. We have no normilize the information
   tud[] <- tud[] / sum(tud[]) 
@@ -185,7 +198,7 @@ simulate.movement<-function(focal.patch=NA,
     #Store habitat kernel
     habitat.kernel <- habitat_kernel(list(forest27 = parameters.simulations$habitat.utilization[[q]]),
                                      map.cropped)
-    
+    #habitat.kernel[]<-1
     
     #for (z in focal.patch){
     for (z in 1:length(focal.patch)){
