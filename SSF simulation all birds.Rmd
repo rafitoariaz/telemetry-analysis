@@ -761,8 +761,7 @@ for (i in 1:length(forest.raster.cropped)){
   plot(land_use_raster_labeled,main=paste0("Freq ",forest.raster.cropped[[i]]$id.freq,". Map ",i))
   points(forest.raster.cropped[[i]]$focal.patch.xy)
 
-  
-  ###NEW CODE
+
   #I will obtain the raster map with the buffer of a/2 that I estimated from the first chapter
   #Off is the amount of meters I would like to expand from the xy coordinates of the focal patch
   off<-3500
@@ -777,7 +776,8 @@ for (i in 1:length(forest.raster.cropped)){
   map.only.focal.patch[map.only.focal.patch!=forest.raster.cropped[[i]]$focal.patch.label.complete.map]<-NA
   
   #Make a buffer around the focal patch equal to a/2 (value obtained from the first chapter)
-  map.only.focal.patch<-buffer(map.only.focal.patch,width=1695.15/2)
+  a.distance<-1695.15
+  map.only.focal.patch<-buffer(map.only.focal.patch,width=a.distance/2)
   
   #Obtained the cropped raster map
   forest.raster.cropped[[i]]$forest.raster.cropped.labeled.null.model.1<-land_use_raster_labeled*map.only.focal.patch
@@ -1130,7 +1130,7 @@ Run replicate simulations:
 source("SSF simulation functions all birds.R")
 
 #Set up the number of simulations per patch and also number of simulations per starting point
-num.sim.points.per.patch<-1
+num.sim.points.per.patch<-2
 num.sim.per.point<-1
 
 #Make a list of the
@@ -1142,11 +1142,11 @@ registerDoParallel(detectCores())
 #1,2,4,8,13,15,17,18
 #for (i in 1:nrow(parameters.simulations)){
 
-  results.simulations.list <- foreach (i= c(1:6,8,9,11:20,22:23), #c(1:6,8,9,11:20,22:23), #11 #1:nrow(parameters.simulations),
+  results.simulations.list <- foreach (i= c(1),#1:6,8,9,11:20,22:23), #c(1:6,8,9,11:20,22:23), #11 #1:nrow(parameters.simulations),
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
-                  tot.num.minutes=20,
+                  tot.num.minutes=10,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations.model,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
@@ -1668,12 +1668,12 @@ results.simulations.dispersal.distance.df %>%
 ```{r}
 #save.image("borrar.RData")
 source("SSF simulation functions all birds.R")
-#load("borrar.RData")
+load("borrar.RData")
 #for (i in 1:length(forest.raster.cropped)){
 #for (i in c(1,2,4,8,9)){ #not included: 5
-for (i in c(10)){ #not included: 4,9,11,13
+for (i in c(1:6,12,14,15,18,20,24)){ #included: 1:6,12,14,15,18,20,24
 start <- Sys.time()
-  print(paste("Start: ",start))
+  print(paste("Starting slot ",i,". Time ",start))
   
 #Crop map using the buffer function at the end
 #Crop the map to the extent I want
@@ -1688,24 +1688,28 @@ forest.raster.cropped[[i]]$focal.patch.label.cropped.immigration[]<-replace(fore
 #xy.focal.patch<-xyFromCell(forest.raster_c_labeled_immigration,which(forest.raster_c_labeled_immigration[] == focal.patch)[1])
 
 #I will set it to 1500 m while I analyze the data 
-max.dist.home.range<-750 #***CHECK: I think it is not selecting the 1500 m radius, it is selecting more. Check it later
+#max.dist.home.range<-750 #***CHECK: I think it is not selecting the 1500 m radius, it is selecting more. Check it later
 
 #LAbel the complete forest map
 #forest.raster_labeled<-ConnCompLabel(land_use)
 
 #Find focal patch on the complete map
-forest.raster.cropped[[i]]$cell.focal.patch.complete.map <- cellFromXY(land_use_raster_labeled,forest.raster.cropped[[i]]$focal.patch.xy)
+#forest.raster.cropped[[i]]$cell.focal.patch.complete.map <- cellFromXY(land_use_raster_labeled,forest.raster.cropped[[i]]$focal.patch.xy)
 
 #Patches that are not part of the focal patch will be set to NA 
 forest.raster.cropped[[i]]$forest.raster_labeled_immigration<-land_use_raster_labeled
-forest.raster.cropped[[i]]$forest.raster_labeled_immigration[forest.raster.cropped[[i]]$forest.raster_labeled_immigration != forest.raster.cropped[[i]]$forest.raster_labeled_immigration[forest.raster.cropped[[i]]$cell.focal.patch.complete.map]]<-NA
+
+forest.raster.cropped[[i]]$forest.raster_labeled_immigration[forest.raster.cropped[[i]]$forest.raster_labeled_immigration !=forest.raster.cropped[[i]]$focal.patch.label.complete.map]<-NA
+
+
+#forest.raster.cropped[[i]]$forest.raster_labeled_immigration[forest.raster.cropped[[i]]$forest.raster_labeled_immigration != forest.raster.cropped[[i]]$forest.raster_labeled_immigration[forest.raster.cropped[[i]]$cell.focal.patch.complete.map]]<-NA
 
 #Checking that I am selecting the right patch
 #plot(land_use)
 #plot(forest.raster_c_labeled_immigration, add=TRUE, col="red")
 
 #Mke a buffer using the maximum home range distance
-Buffer <- buffer(forest.raster.cropped[[i]]$forest.raster_labeled_immigration, width=max.dist.home.range)
+Buffer <- buffer(forest.raster.cropped[[i]]$forest.raster_labeled_immigration, width=a.distance)
 
 #Plot to double check
 #plot(Buffer)
@@ -1720,7 +1724,8 @@ forest.raster.cropped[[i]]$immigration.map.labeled<-crop(land_use_raster_labeled
 
 
 #Obtain patch code of the croped map
-forest.raster.cropped[[i]]$focal.patch.immigration<-forest.raster.cropped[[i]]$immigration.map.labeled[cellFromXY(forest.raster.cropped[[i]]$immigration.map.labeled,forest.raster.cropped[[i]]$focal.patch.xy)]
+forest.raster.cropped[[i]]$focal.patch.immigration<-forest.raster.cropped[[i]]$focal.patch.label.complete.map
+#forest.raster.cropped[[i]]$focal.patch.immigration<-forest.raster.cropped[[i]]$immigration.map.labeled[cellFromXY(forest.raster.cropped[[i]]$immigration.map.labeled,forest.raster.cropped[[i]]$focal.patch.xy)]
 
 #Obtain all the patches id from the croped map
 forest.raster.cropped[[i]]$patches.immigration<-unique(forest.raster.cropped[[i]]$immigration.map.labeled[])
@@ -1739,8 +1744,19 @@ rm(Buffer)
 
 ```
 
-Run replicate simulations:
+```{r}
+for (i in 1:length(forest.raster.cropped)){
 
+forest.raster.cropped[[i]]$patches.immigration<-data.frame(patches.immigration=unique(forest.raster.cropped[[i]]$forest.raster.cropped.labeled[])) %>% 
+  filter(patches.immigration>0 & patches.immigration!=forest.raster.cropped[[i]]$focal.patch.label.cropped) %>% 
+  .$patches.immigration
+}
+
+```
+
+
+Run replicate simulations:
+##***I THINK IS SHOULD SELECT THE PATCHES FROM THE RASTER.CROPPED.MAP.BUFFER AND THEN DO A BUFFER FROM THE LIMITS OF THOSE PATCHES SO THAT, WHEN I SIMULATE THE MOVEMENT BEHAVIOR, THEY CAN MOVE FREELY IN THE LANDSCAPE AND THEY DO NOT BOUNCE
 ```{r}
 
 source("SSF simulation functions.R")
@@ -1774,14 +1790,15 @@ registerDoParallel(detectCores())
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$patches.immigration,
-                  focal.patch.immigration=forest.raster.cropped[[i]]$focal.patch.immigration,
+                  focal.patch.immigration=forest.raster.cropped[[i]]$focal.patch.label.cropped,
                   tot.num.minutes=5,
                   fix.rate=5,
+                  parameters.simulations=parameters.simulations.model,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
                   num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
                   map.full=land_use_raster,
-                  map.cropped=forest.raster.cropped[[i]]$immigration.map,
-                  map.cropped.labeled=forest.raster.cropped[[i]]$immigration.map.labeled,
+                  map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
+                  map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
                   landscape.variables=forest.raster.cropped[[i]]$landscape.variables,
                   name.output.list=raw.results.immigration)
                                   
