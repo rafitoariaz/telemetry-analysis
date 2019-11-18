@@ -10,7 +10,6 @@ output: html_document
 ## FORMAT DATA BASE FOR ANALYSIS
 #PENDING ACTIVITIES
   #When I am simulating the movement behavior of animals, sometimes the next point lands in a coordinate where there is no information in the raster map. I did a code that it repeats the simulation of calculating a new point every time it lands outside the raster map and it is working when I am running the code individually. However, when I run the code for doing the calculations in parallel or in different cores, it is still not working and I do not know why
-  #I need to register how many times the code is doing a simulation when it lands outside the raster map. However, it is working when I run the code individually but it is not working when I run the code in parallel. The data frame it is called test.new.coords
   #When I use the movement_kernel function in the amt package, I cannot fix a specific value for the von Misses distribution parameter, so I do not know very well what value is taking when I use the function. 
   #When I estimate the ssf, it generates random steps to compare them with the actual steps. The problem is that every time I run the code from scratch it makes new random steps, so the parameters in the SSF are different each time
   #I need to set.seed in the simulation code of the movement behavior. 
@@ -1130,7 +1129,7 @@ Run replicate simulations:
 source("SSF simulation functions all birds.R")
 
 #Set up the number of simulations per patch and also number of simulations per starting point
-num.sim.points.per.patch<-2
+num.sim.points.per.patch<-1
 num.sim.per.point<-1
 
 #Make a list of the
@@ -1142,7 +1141,7 @@ registerDoParallel(detectCores())
 #1,2,4,8,13,15,17,18
 #for (i in 1:nrow(parameters.simulations)){
 
-  results.simulations.list <- foreach (i= c(1),#1:6,8,9,11:20,22:23), #c(1:6,8,9,11:20,22:23), #11 #1:nrow(parameters.simulations),
+  results.simulations.list <- foreach (i= c(1,2),#1:6,8,9,11:20,22:23), #c(1:6,8,9,11:20,22:23), #11 #1:nrow(parameters.simulations),
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
@@ -1187,27 +1186,27 @@ results.simulations.list <- dget("results.simulations.list")
   #I generated for each simulation (in this case is called results.simulations2). I am using the
   #first element of the list as a molde
   results.simulations.df<-data.frame(matrix(0,
-                                          ncol=ncol(results.simulations.list[[1]][[1]][[1]][[1]][[1]]),
+                                          ncol=ncol(results.simulations.list[[1]][[1]][[1]][[1]][[1]][[1]]),
                                           nrow=1)) 
   
   #Name columns
-  names(results.simulations.df)<-names(results.simulations.list[[1]][[1]][[1]][[1]][[1]])
+  names(results.simulations.df)<-names(results.simulations.list[[1]][[1]][[1]][[1]][[1]][[1]])
 
 
   #Paste all data bases
   for (z in 1:length(results.simulations.list)){
     
-    for(a in 1:length(results.simulations.list[[z]])){
+    for(a in 1:length(results.simulations.list[[z]][[1]])){
       
-      for (g in 1:length(results.simulations.list[[z]][[a]])){
+      for (g in 1:length(results.simulations.list[[z]][[1]][[a]])){
         
-        for (l in 1:length(results.simulations.list[[z]][[a]][[g]]))
+        for (l in 1:length(results.simulations.list[[z]][[1]][[a]][[g]]))
           
-          for (q in 1:length(results.simulations.list[[z]][[a]][[g]][[l]]))
+          for (q in 1:length(results.simulations.list[[z]][[1]][[a]][[g]][[l]]))
             
       {
         
-        df<-results.simulations.list[[z]][[a]][[g]][[l]][[q]]
+        df<-results.simulations.list[[z]][[1]][[a]][[g]][[l]][[q]]
         
         results.simulations.df<-rbind(df,results.simulations.df)
         
@@ -1225,7 +1224,35 @@ results.simulations.list <- dget("results.simulations.list")
 
 
 ```{r}
-test.new.coords
+#Join the data frame of the lists of points that landed in a place in a mpa where there is no information
+new.coords.test<-data.frame(matrix(0,
+                                          ncol=ncol(results.simulations.list[[z]][[2]]),
+                                          nrow=1)) 
+  
+  #Name columns
+  names(new.coords.test)<-names(results.simulations.list[[z]][[2]])
+
+#Paste all data bases
+  for (z in 1:length(results.simulations.list)){
+    
+    df<-results.simulations.list[[z]][[2]]
+        
+        new.coords.test<-rbind(df,new.coords.test)
+        
+      }
+
+  #Count the proportion ofpoints that landed in a place in a mpa where there is no information
+  new.coords.test %>% 
+    filter(starting.coord.x!=0) %>% 
+    mutate(test=is.na(test.in.new.coord)) %>% 
+    group_by(test) %>% 
+    summarise(total=n()) %>% 
+    ungroup() %>% 
+    mutate(proportion=total/nrow(new.coords.test %>% 
+    filter(starting.coord.x!=0)))
+  
+  
+  
 ```
 
 
@@ -1471,26 +1498,26 @@ dispersal.distance(#focal.patch=focal.patch,
   #I generated for each simulation (in this case is called results.simulations2). I am using the
   #first element of the list as a molde
   results.simulations.dispersal.distance.df<-data.frame(matrix(0,
-                                          ncol=ncol(results.simulations.list[[1]][[1]][[1]][[1]][[1]]),
+                                          ncol=ncol(results.simulations.list[[1]][[1]][[1]][[1]][[1]][[1]]),
                                           nrow=1)) 
   
   #Name columns
-  names(results.simulations.dispersal.distance.df)<-names(results.simulations.list[[1]][[1]][[1]][[1]][[1]])
+  names(results.simulations.dispersal.distance.df)<-names(results.simulations.list[[1]][[1]][[1]][[1]][[1]][[1]])
   
 
   #Paste all data bases
   for (z in 1:length(results.simulations.list)){
     
-    for(a in 1:length(results.simulations.list[[z]])){
+    for(a in 1:length(results.simulations.list[[z]][[1]])){
       
-      for (g in 1:length(results.simulations.list[[z]][[a]])){
+      for (g in 1:length(results.simulations.list[[z]][[1]][[a]])){
         
-        for (l in 1:length(results.simulations.list[[z]][[a]][[g]]))
+        for (l in 1:length(results.simulations.list[[z]][[1]][[a]][[g]]))
           
-          for (q in 1:length(results.simulations.list[[z]][[a]][[g]][[l]]))
+          for (q in 1:length(results.simulations.list[[z]][[1]][[a]][[g]][[l]]))
       {
         
-        df<-results.simulations.list[[z]][[a]][[g]][[l]][[q]]
+        df<-results.simulations.list[[z]][[1]][[a]][[g]][[l]][[q]]
         
         results.simulations.dispersal.distance.df<-rbind(df,results.simulations.dispersal.distance.df)
         
