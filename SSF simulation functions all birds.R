@@ -175,6 +175,8 @@ simulate.movement<-function(focal.patch=NA,
                                new.coord.y=0,
                                test.in.new.coord=0)
   
+  test.coords<-list()
+  
   for (q in 1:nrow(parameters.simulations)){
     
     one.sim$id.simulation=parameters.simulations$id.simulation[[q]]
@@ -392,14 +394,15 @@ simulate.movement<-function(focal.patch=NA,
             print(paste("Point",l,"of",num.sim.per.point,"simulations in the same starting point"))
             print(paste("Step",k,"of",tot.num.steps,"steps"))
           }
-          
         }
-        test.new.coords.final<<-rbind(test.new.coords.final,test.new.coords)
       }
     }
     }
-  
-  time.location.regurgitation
+  test.new.coords.final<<-rbind(test.new.coords.final,test.new.coords)
+  #test.coords[z]<-test.new.coords.final
+  #list(time.location.regurgitation,test.new.coords[-1,])
+  #list(time.location.regurgitation,test.new.coords.final)
+  list(time.location.regurgitation,test.new.coords.final)
   
 }
 
@@ -695,23 +698,23 @@ dispersal.distance<-function(focal.patch=NA,
   
   for (z in 1:length(name.input.database)){
     
-    for(a in 1:length(name.input.database[[z]])){
+    for(a in 1:length(name.input.database[[z]][[1]])){
       
-      for (g in 1:length(name.input.database[[z]][[a]])){
+      for (g in 1:length(name.input.database[[z]][[1]][[a]])){
         
-        for (l in 1:length(name.input.database[[z]][[a]][[g]]))
+        for (l in 1:length(name.input.database[[z]][[1]][[a]][[g]]))
           
-          for (q in 1:length(name.input.database[[z]][[a]][[g]][[l]]))
+          for (q in 1:length(name.input.database[[z]][[1]][[a]][[g]][[l]]))
       {
         #Create a column for the dispersal distance
         #df[[z]][[g]][[l]]$disperal.distance<-0
         
-        for (k in 2:nrow(df[[z]][[a]][[g]][[l]][[q]]))
+        for (k in 2:nrow(df[[z]][[1]][[a]][[g]][[l]][[q]]))
         #It will use the first xy values row and obtain the distance in the x y values of the n row of the data frame
-          df[[z]][[a]][[g]][[l]][[q]][k,"dispersal.distance"]<-pointDistance(df[[z]][[a]][[g]][[l]][[q]][1,c("x","y")], #Always select the first row since it is the starting point
-                                                                   df[[z]][[a]][[g]][[l]][[q]][k,c("x","y")], #Select row k
+          df[[z]][[1]][[a]][[g]][[l]][[q]][k,"dispersal.distance"]<-pointDistance(df[[z]][[1]][[a]][[g]][[l]][[q]][1,c("x","y")], #Always select the first row since it is the starting point
+                                                                   df[[z]][[1]][[a]][[g]][[l]][[q]][k,c("x","y")], #Select row k
                                                                    lonlat=F)
-        df[[z]][[a]][[g]][[l]][[q]][1,"dispersal.distance"]<-0
+        df[[z]][[1]][[a]][[g]][[l]][[q]][1,"dispersal.distance"]<-0
         
         #Assign the data frame the name of the data frame I put at the beginning of the function
         assign(deparse(substitute(name.input.database)),
