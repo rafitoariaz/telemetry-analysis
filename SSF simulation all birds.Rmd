@@ -112,7 +112,30 @@ m<-matrix(c(0,1,0,
 land_use_raster<-reclassify(land_use_raster,m)
 names(land_use_raster) <- "forest27"
 
+crs.adam<-crs(land_use_raster)
+
 rm(m)
+```
+
+```{r}
+#Prepare Felipe's raster map
+#Read shape file
+s<-sf::st_read(dsn="Data bases/raster_map_costa_rica_felipe/Forest.shp")
+
+# Rasterize field 'PatchName'
+
+#Note: I defined the background value as '0' (not NA), this will be the matrix. I'm setting the function to 'min' so that it takes the minimum PatchName if there are multiple patches in a cell. I hope this will give it the matrix value, but I'm not sure it will. Otherwise can use e.g. 'last'.
+Raster <- raster(s, res = 10)
+Raster <- fasterize(s, Raster, field = "PatchName", fun = "min", background = 0, by = NULL)
+names(Raster) <- "forest27"
+
+land_use_raster<-Raster
+land_use_raster[land_use_raster>0]<-1
+#names(land_use_raster) <- "forest27"
+
+crs(land_use_raster)<-crs.adam
+
+rm(s)
 ```
 
 #Prepare information that will have the frequency of each individual, the patch were it was captured and the information of each patch where the individual was captured
@@ -656,18 +679,6 @@ condensed.dataframe.subset.remaining <- condensed.dataframe.subset.remaining[c(2
 condensed.dataframe.subset <- rbind(condensed.dataframe.subset,condensed.dataframe.subset.remaining,condensed.dataframe.subset.remaining2)
 ```
 
-```{r}
-#Read shape file
-s<-sf::st_read(dsn="Data bases/raster_map_costa_rica_felipe/Forest.shp")
-
-# Rasterize field 'PatchName'
-
-#Note: I defined the background value as '0' (not NA), this will be the matrix. I'm setting the function to 'min' so that it takes the minimum PatchName if there are multiple patches in a cell. I hope this will give it the matrix value, but I'm not sure it will. Otherwise can use e.g. 'last'.
-Raster <- raster(s, res = 10)
-Raster <- fasterize(s, Raster, field = "PatchName", fun = "min", background = 0, by = NULL)
-rm(s)
-```
-
 
 
 ```{r}
@@ -765,7 +776,8 @@ for (i in 1:length(forest.raster.cropped)){
   
   #Sotre forest raster labaled.
   forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-ConnCompLabel(forest.raster.cropped[[i]]$forest.raster.cropped)
-  forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-crop(land_use_raster_labeled, amt::bbox(condensed.dataframe.subset$trk[[i]], spatial = TRUE, buff = 1e3)) #Here I am using the same extent than the land_use_raster map that was cropped but with Felipe's shp raster file
+  #JUST UNCHECKED THIS
+  #forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-crop(land_use_raster_labeled, amt::bbox(condensed.dataframe.subset$trk[[i]], spatial = TRUE, buff = 1e3)) #Here I am using the same extent than the land_use_raster map that was cropped but with Felipe's shp raster file
   
   #Obtain the cell number from the xy cordinate from the cropped raster map. ***I HAVE THE CORRECT VALUES OF THE RASTERS, I ONLY NEED TO MODIFY THE CODE SO THAT IT WORKS WITH THIS MODIFICATION
   forest.raster.cropped[[i]]$focal.patch.label.cropped <- forest.raster.cropped[[i]]$forest.raster.cropped.labeled[cellFromXY (forest.raster.cropped[[i]]$forest.raster.cropped.labeled, forest.raster.cropped[[i]]$focal.patch.xy)]
@@ -799,9 +811,15 @@ for (i in 1:length(forest.raster.cropped)){
   #Make a buffer around the focal patch equal to a/2 (value obtained from the first chapter)
   a.distance<-1695.15
   map.only.focal.patch<-buffer(map.only.focal.patch,width=a.distance/2)
+  #map.only.focal.patch2<-buffer(map.only.focal.patch,width=3000)
   
   #Obtained the cropped raster map
   forest.raster.cropped[[i]]$forest.raster.cropped.labeled.null.model.1<-land_use_raster_labeled*map.only.focal.patch
+  names(forest.raster.cropped[[i]]$forest.raster.cropped.labeled.null.model.1)<-"forest27"
+  #forest.raster.cropped[[i]]$forest.raster.cropped<-land_use_raster_labeled*map.only.focal.patch2
+  #names(forest.raster.cropped[[i]]$forest.raster.cropped)<-"forest27"
+  #forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-land_use_raster_labeled*map.only.focal.patch2
+  #names(forest.raster.cropped[[i]]$forest.raster.cropped.labeled)<-"forest27"
   
   #Plot cropped raster map
   plot(forest.raster.cropped[[i]]$forest.raster.cropped.labeled.null.model.1,main=paste0("Freq ",forest.raster.cropped[[i]]$id.freq,". Map ",i))
@@ -910,21 +928,6 @@ parameters.simulations %>%
          log.habitat.utilization=log(habitat.utilization)) %>% 
   select(-c(patch_size,id.simulation,Patch,shape.step.length,scale.step.length,habitat.utilization)) %>% 
   ggpairs(upper=list(continuous="cor"),lower=list(continuous="smooth"))
-```
-
-
-```{r}
-
-#Looking where is the focal patch in the landscape
-for (i in 1:length(forest.raster.cropped)){
- 
-  map<-land_use_raster_labeled
-  map[map!=forest.raster.cropped[[i]]$focal.patch.label.complete.map]<-0.5
-  plot(map)
-   
-  
-}
-
 ```
 
 
@@ -1144,7 +1147,7 @@ Run replicate simulations:
 source("SSF simulation functions all birds.R")
 
 #Set up the number of simulations per patch and also number of simulations per starting point
-num.sim.points.per.patch<-4
+num.sim.points.per.patch<-20
 num.sim.per.point<-1
 
 #Make a list of the
@@ -1160,7 +1163,7 @@ registerDoParallel(detectCores())
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
-                  tot.num.minutes=5,
+                  tot.num.minutes=60,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations.model,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
