@@ -14,6 +14,11 @@ output: html_document
   #When I estimate the ssf, it generates random steps to compare them with the actual steps. The problem is that every time I run the code from scratch it makes new random steps, so the parameters in the SSF are different each time
   #I need to set.seed in the simulation code of the movement behavior. 
 
+#Problems
+*When I do the simulations with the movement_kernel function in amt package, I cannot fix the von Misses distribution for the turning angle, so I do not know
+*Line 216. I had to update the dplyr package so that I could run a code but now the filter_min_n_burst function is not working. I will ignore it until I fix it
+*I am using Adam's raster map for knowing which areas are forest an non-forest, but I am using Felipe's shp file for identifying patch id. They might be different, so one solution would be to process Felipe's shp file so that it gives me information of the forested and non-forested areas
+
 http://tlocoh.r-forge.r-project.org/tips/isopleth_overlap_auto.html
 
 ## Load required packages
@@ -47,10 +52,12 @@ library("stats")
 #library("knitr")
 library("ggpubr")
 library("tibble")
+#install.packages("sf")
+library("sf")
+library("raster")
+library("fasterize")
 ```
 
-#Problems
-*When I do the simulations with the movement_kernel function in amt package, I cannot fix the von Misses distribution for the turning angle, so I do not know
 
 ```{r}
 #Convert the Rmd file to R file so that it can be read on the super computer
@@ -206,12 +213,12 @@ select(id, sr) %>% unnest
 
 #Make tracks
 ```{r}
-
+###****I had to update the dplyr package so that I could run a code but now the filter_min_n_burst function is not working. I will ignore it until I fix it
 
 condensed.dataframe.subset <- condensed.dataframe.subset %>% mutate(ssf = lapply(trk, function(x) {
 x %>% 
     track_resample(rate = minutes(5), tolerance = minutes(2)) %>% #A track will be considered if the two consecutive GPS points are separated by 5 minutes +- 2 minutes of tolerance
-    filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
+    #filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
     steps_by_burst() %>% #Converts the points to tracks
     random_steps() %>% #Makes 9 random steps
     extract_covariates(land_use_raster, where = "both") %>% #Extracts covariates of vegetation on initial and ending location. In "amt tutorial.pdf" it explains the following: covariate values at the start and the end of a step can also be included in the model as interaction with each other, to test hypotheses of the type: Are animals more likely to stay in a given habitat, if they are already in the habitat?
@@ -225,7 +232,7 @@ x %>%
 condensed.dataframe.subset.remaining <- condensed.dataframe.subset.remaining %>% mutate(ssf = lapply(trk, function(x) {
 x %>% 
     track_resample(rate = minutes(5), tolerance = minutes(2)) %>% #A track will be considered if the two consecutive GPS points are separated by 5 minutes +- 2 minutes of tolerance
-    filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
+    #filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
     steps_by_burst() %>% #Converts the points to tracks
     random_steps() %>% #Makes 9 random steps
     extract_covariates(land_use_raster, where = "both") %>% #Extracts covariates of vegetation on initial and ending location. In "amt tutorial.pdf" it explains the following: covariate values at the start and the end of a step can also be included in the model as interaction with each other, to test hypotheses of the type: Are animals more likely to stay in a given habitat, if they are already in the habitat?
@@ -239,7 +246,7 @@ x %>%
 condensed.dataframe <- condensed.dataframe %>% mutate(ssf = lapply(trk, function(x) {
 x %>% 
     track_resample(rate = minutes(5), tolerance = minutes(2)) %>% #A track will be considered if the two consecutive GPS points are separated by 5 minutes +- 2 minutes of tolerance
-    filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
+    #filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
     steps_by_burst() %>% #Converts the points to tracks
     random_steps() %>% #Makes 9 random steps
     extract_covariates(land_use_raster, where = "both") %>% #Extracts covariates of vegetation on initial and ending location. In "amt tutorial.pdf" it explains the following: covariate values at the start and the end of a step can also be included in the model as interaction with each other, to test hypotheses of the type: Are animals more likely to stay in a given habitat, if they are already in the habitat?
@@ -649,6 +656,19 @@ condensed.dataframe.subset.remaining <- condensed.dataframe.subset.remaining[c(2
 condensed.dataframe.subset <- rbind(condensed.dataframe.subset,condensed.dataframe.subset.remaining,condensed.dataframe.subset.remaining2)
 ```
 
+```{r}
+#Read shape file
+s<-sf::st_read(dsn="Data bases/raster_map_costa_rica_felipe/Forest.shp")
+
+# Rasterize field 'PatchName'
+
+#Note: I defined the background value as '0' (not NA), this will be the matrix. I'm setting the function to 'min' so that it takes the minimum PatchName if there are multiple patches in a cell. I hope this will give it the matrix value, but I'm not sure it will. Otherwise can use e.g. 'last'.
+Raster <- raster(s, res = 10)
+Raster <- fasterize(s, Raster, field = "PatchName", fun = "min", background = 0, by = NULL)
+rm(s)
+```
+
+
 
 ```{r}
 #MAKE DATA BASES FOR ANALYSIS
@@ -710,6 +730,7 @@ rm(patches.locations)
 
 #Create an object with the land use raster map but labelled
 land_use_raster_labeled<-ConnCompLabel(land_use_raster)
+land_use_raster_labeled<-Raster #Here I am replacing the original code in which I set up the patch id from Adam's file and use Felipe's shape raster map
 
 #I will make a list of the patches where the birds will be moving. ###***HERE I CAN MODIFY THE CODE SO THAT I CAN PUT ANY PATCH I WANT. FOR NOW I AM USING PATCHES WERE THE BIRDS WERE CAPTURED
 #Make a list with the forest raster cropped to the extent of the animal that moved
@@ -744,6 +765,7 @@ for (i in 1:length(forest.raster.cropped)){
   
   #Sotre forest raster labaled.
   forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-ConnCompLabel(forest.raster.cropped[[i]]$forest.raster.cropped)
+  forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-crop(land_use_raster_labeled, amt::bbox(condensed.dataframe.subset$trk[[i]], spatial = TRUE, buff = 1e3)) #Here I am using the same extent than the land_use_raster map that was cropped but with Felipe's shp raster file
   
   #Obtain the cell number from the xy cordinate from the cropped raster map. ***I HAVE THE CORRECT VALUES OF THE RASTERS, I ONLY NEED TO MODIFY THE CODE SO THAT IT WORKS WITH THIS MODIFICATION
   forest.raster.cropped[[i]]$focal.patch.label.cropped <- forest.raster.cropped[[i]]$forest.raster.cropped.labeled[cellFromXY (forest.raster.cropped[[i]]$forest.raster.cropped.labeled, forest.raster.cropped[[i]]$focal.patch.xy)]
@@ -856,15 +878,8 @@ for (i in 1:length(forest.raster.cropped)){
 
 }
 
+  #PROBLEM WITH i 11 FREQUENCY 942: The patch is on the border of the map and it is big, so it is taking area outside the border when I make a buffer around it and considering that area as matrix
 
-
-  #PROBLEM WITH i 10 FREQUENCY 881: The id of the patch according to Adam is 26, and the focal patch of the labeled full raster mapo is 96. the patch is very big. Ask Adam if that is correct. Maybe the raster map does not have the splits between patches so it is considering a big patch as only one
-  #PROBLEM WITH i 11 FREQUENCY 942: The id of the patch according to Adam is 53, and the focal patch of the labeled full raster mapo is 96. the patch is very big. Ask Adam if that is correct. Maybe the raster map does not have the splits between patches so it is considering a big patch as only one
-  #PROBLEM WITH i 13 FREQUENCY 392: The id of the patch according to Adam is 32, and the focal patch of the labeled full raster mapo is 96. the patch is very big. Ask Adam if that is correct. Maybe the raster map does not have the splits between patches so it is considering a big patch as only one
-  #PROBLEM WITH i  F17REQUENCY 631: The id of the patch according to Adam is 32, and the focal patch of the labeled full raster mapo is 96. the patch is very big. Ask Adam if that is correct. Maybe the raster map does not have the splits between patches so it is considering a big patch as only one
-  
-###***SEE WHY IT IS NOTOT ESTIMATING WELL THE PROPORTION OF FOREST IN EACH LANDSCAPE
-  #WRITE DOWN THE INSTRUCTION FOR THE CODE I JUST WROTE
 
 rm(structure,map.only.focal.patch,sum.total.landscape,prop.same.patch,prop.matrix,prop.new.patch,ext,off)
 ```
@@ -1129,7 +1144,7 @@ Run replicate simulations:
 source("SSF simulation functions all birds.R")
 
 #Set up the number of simulations per patch and also number of simulations per starting point
-num.sim.points.per.patch<-1
+num.sim.points.per.patch<-4
 num.sim.per.point<-1
 
 #Make a list of the
@@ -1139,13 +1154,13 @@ registerDoParallel(detectCores())
 #registerDoParallel(10)
 
 #1,2,4,8,13,15,17,18
-#for (i in 1:nrow(parameters.simulations)){
+#for (1:length(forest.raster.cropped)){
 
-  results.simulations.list <- foreach (i= c(1,2),#1:6,8,9,11:20,22:23), #c(1:6,8,9,11:20,22:23), #11 #1:nrow(parameters.simulations),
+  results.simulations.list <- foreach (i= c(1:length(forest.raster.cropped)),#1:6,8,9,11:20,22:23), #c(1:6,8,9,11:20,22:23), #11 #1:nrow(parameters.simulations),
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
-                  tot.num.minutes=10,
+                  tot.num.minutes=5,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations.model,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable

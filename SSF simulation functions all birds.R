@@ -237,7 +237,7 @@ simulate.movement<-function(focal.patch=NA,
             initial.starting.point<-data.frame(sampleStratified(map.cropped.labeled, 
                                                                 1, xy=T))
             initial.starting.point<-subset(initial.starting.point,
-                                           initial.starting.point$forest27==focal.patch[z])[,c("x","y")]
+                                           initial.starting.point$forest27==focal.patch[z])[,c("x","y")] #After $ it said forest27. I replaced it
             
             #Put information on data frame of where the bird started its track and the raster value
             time.location.regurgitation[[q]][[z]][[g]][[l]][1,"x"]<<-initial.starting.point[1]
