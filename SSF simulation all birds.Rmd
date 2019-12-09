@@ -766,7 +766,7 @@ for (i in 1:length(forest.raster.cropped)){
   forest.raster.cropped[[i]]$focal.patch.label.complete.map <- land_use_raster_labeled[cellFromXY (land_use_raster_labeled, forest.raster.cropped[[i]]$focal.patch.xy)]
   
   #Crop the map to the area in which the animal moved. #****NOW I AM CROPPING THE MAP BASED ON THE PLACES WHERE THE BIRD MOVED, BUT I COULD CROP THE MAP BASED ON THE LOCATION OF THE PATCH WHERE I WANT TO DO THE SIMULATION
-  forest.raster.cropped[[i]]$forest.raster.cropped <- crop(land_use_raster, amt::bbox(condensed.dataframe.subset$trk[[i]], spatial = TRUE, buff = 1e3))
+  forest.raster.cropped[[i]]$forest.raster.cropped <- crop(land_use_raster, amt::bbox(condensed.dataframe.subset$trk[[i]], spatial = TRUE, buff = 5e3))
   
   #Store movment kernel
   #forest.raster.cropped[[i]]$movement.kernel <- movement_kernel(parameters.simulations$scale.step.length[[i]], parameters.simulations$shape.step.length[[i]], forest.raster.cropped[[i]]$forest.raster.cropped)
@@ -775,9 +775,10 @@ for (i in 1:length(forest.raster.cropped)){
   #forest.raster.cropped[[i]]$habitat.kernel <- habitat_kernel(list(forest27 = parameters.simulations$habitat.kernel[[i]]), forest.raster.cropped[[i]]$forest.raster.cropped)
   
   #Sotre forest raster labaled.
-  forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-ConnCompLabel(forest.raster.cropped[[i]]$forest.raster.cropped)
+  #forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-ConnCompLabel(forest.raster.cropped[[i]]$forest.raster.cropped)
+  
   #JUST UNCHECKED THIS
-  #forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-crop(land_use_raster_labeled, amt::bbox(condensed.dataframe.subset$trk[[i]], spatial = TRUE, buff = 1e3)) #Here I am using the same extent than the land_use_raster map that was cropped but with Felipe's shp raster file
+  forest.raster.cropped[[i]]$forest.raster.cropped.labeled<-crop(land_use_raster_labeled, amt::bbox(condensed.dataframe.subset$trk[[i]], spatial = TRUE, buff = 5e3)) #Here I am using the same extent than the land_use_raster map that was cropped but with Felipe's shp raster file
   
   #Obtain the cell number from the xy cordinate from the cropped raster map. ***I HAVE THE CORRECT VALUES OF THE RASTERS, I ONLY NEED TO MODIFY THE CODE SO THAT IT WORKS WITH THIS MODIFICATION
   forest.raster.cropped[[i]]$focal.patch.label.cropped <- forest.raster.cropped[[i]]$forest.raster.cropped.labeled[cellFromXY (forest.raster.cropped[[i]]$forest.raster.cropped.labeled, forest.raster.cropped[[i]]$focal.patch.xy)]
@@ -928,6 +929,22 @@ parameters.simulations %>%
          log.habitat.utilization=log(habitat.utilization)) %>% 
   select(-c(patch_size,id.simulation,Patch,shape.step.length,scale.step.length,habitat.utilization)) %>% 
   ggpairs(upper=list(continuous="cor"),lower=list(continuous="smooth"))
+
+#Scatter plot of parameters patch size and percent of forest of sampled patches.The horizontal line delimits small and big patches
+parameters.simulations %>% 
+  inner_join(frequencies.patches %>% 
+               mutate(Patch=PATCH,
+                      id.simulation=FREQ) %>% 
+               select(Patch,id.simulation),by="id.simulation") %>% 
+  inner_join(patches.info,by="Patch") %>% 
+  mutate(log.patch.size=patch_size,
+         log.shape.step.length=log(shape.step.length),
+         log.scale.step.length=log(scale.step.length),
+         log.habitat.utilization=log(habitat.utilization)) %>% 
+  select(c(patch_size,percent_forest)) %>% 
+  ggplot(aes(x=patch_size,y=percent_forest)) +
+  geom_point() +
+  geom_vline(xintercept=20)
 ```
 
 
@@ -1108,8 +1125,7 @@ data %>%
   select(estimate) %>% 
   summary()
 
-#Save workspace for simulation
-#save.image("workspace_calculon.RData")
+
 #rm(graph.parameters.database)
 ```
 
@@ -1139,6 +1155,8 @@ for (i in 1:length(forest.raster.cropped)){
 Run replicate simulations:
 
 ```{r}
+#Save workspace for simulation in calculon
+#save.image("workspace_calculon.RData")
 
 #Load workspace for simulation modelling
 #load("simulation_modelling_workspace.RData")
@@ -1149,6 +1167,8 @@ source("SSF simulation functions all birds.R")
 #Set up the number of simulations per patch and also number of simulations per starting point
 num.sim.points.per.patch<-20
 num.sim.per.point<-1
+tot.num.minutes<-60
+fix.rate<-5
 
 #Make a list of the
 results.simulations.list <- split(parameters.simulations.model$id.simulation,parameters.simulations.model$id.simulation)
@@ -1163,8 +1183,8 @@ registerDoParallel(detectCores())
                                 .packages=c("amt","raster")) %dopar% {
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropped,
-                  tot.num.minutes=60,
-                  fix.rate=5,
+                  tot.num.minutes=tot.num.minutes,
+                  fix.rate=fix.rate,
                   parameters.simulations=parameters.simulations.model,
                   num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
                   num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
@@ -1183,7 +1203,7 @@ simulate.movement(focal.patch=forest.raster.cropped[[i]]$focal.patch.label.cropp
 stopImplicitCluster()
 
 #Save results
-#save.image("borrar.Rdata")
+#save.image("borrar.Rdata"). Saved worskpace as "simulations SSF.Rdata"
 
 #dput(results.simulations.list,"results.simulations.list")
 ```
@@ -1191,6 +1211,42 @@ stopImplicitCluster()
 ```{r}
 results.simulations.list <- dget("results.simulations.list")
 ```
+
+```{r}
+results.simulations.df<-data.frame(matrix(0,
+                                          ncol=ncol(time.location.regurgitation[[1]][[1]][[1]][[1]]),
+                                          nrow=1)) 
+
+#Name columns
+  names(results.simulations.df)<-names(time.location.regurgitation[[1]][[1]][[1]][[1]])
+  
+  for (z in 1:length(time.location.regurgitation)){
+    
+    for(a in 1:length(time.location.regurgitation[[z]])){
+      
+      for (g in 1:length(time.location.regurgitation[[z]][[a]])){
+        
+        for (l in 1:length(time.location.regurgitation[[z]][[a]][[g]]))
+            
+      {
+        
+        df<-time.location.regurgitation[[z]][[a]][[g]][[l]]
+        
+        results.simulations.df<-rbind(df,results.simulations.df)
+        
+      }
+    }
+  }
+  }
+  
+  
+  #Delete last observation which has nothing
+  results.simulations.df<-results.simulations.df[-nrow(results.simulations.df),]
+
+
+
+```
+
 
 
 ```{r}
@@ -1279,6 +1335,7 @@ new.coords.test<-data.frame(matrix(0,
 
 results.emigration <- final.database(name.input.database=results.simulations.df,
                name.output.dataframe=results.emigration) %>% 
+  na.omit() %>% 
   filter(time==20 | time==40 | time==60) #Subsetting the times that I am interested
 ```
 
@@ -1289,6 +1346,24 @@ results.emigration <- final.database(name.input.database=results.simulations.df,
 plot(land_use_raster)
 points(results.simulations.df$x,results.simulations.df$y,col=results.simulations.df$patch.id.adam)
 ```
+
+```{r}
+#I will plot the points of the simulation in the landscape per patch
+for (i in 1:length(forest.raster.cropped)){
+  
+  #Plot forest map
+  plot(forest.raster.cropped[[i]]$forest.raster.cropped,main=paste("Patch ",i))
+  
+  #Subset the points from that patch
+  p<-results.simulations.df %>% 
+    filter(patch.id.adam==forest.raster.cropped[[i]]$landscape.variables$Patch)
+  
+  #Plot the points
+  points(p$x,p$y)
+  
+}
+```
+
 
 ```{r}
 #I will do a chi test to each of the simulation I made
@@ -1346,13 +1421,7 @@ summary(test.proportions<-results.emigration %>%
   mutate(id=paste(focal.patch,patch.id.adam,sep=".")) %>% 
   select(id,prop.same.patch,prop.matrix,prop.new.patch)  %>% 
   gather(fate,proportion,prop.same.patch:prop.new.patch) %>% 
-  lme(asin(sqrt(proportion))~fate,random = ~1 | id,data=.))
-
-summary(test.proportions<-results.emigration %>% 
-  mutate(id=paste(focal.patch,patch.id.adam,sep=".")) %>% 
-  select(id,prop.same.patch,prop.matrix,prop.new.patch)  %>% 
-  gather(fate,proportion,prop.same.patch:prop.new.patch) %>% 
-    mutate(fate=relevel(factor(fate), ref = 3)) %>% 
+    mutate(fate=relevel(factor(fate), ref = 3)) %>% #Re leveling factors so that I can compare proportion of seeds that landed in the same patch with the other ones
   lme(asin(sqrt(proportion))~fate,random = ~1 | id,data=.))
 
 
@@ -1385,7 +1454,7 @@ rm(test.proportions)
 ```{r}
 #Anaylsis of the porportion of fruits in the landscape
 results.emigration %>% 
-  select(-c(focal.patch,patch.id.adam,matrix,new.patch,same.patch)) %>% 
+  select(-c(focal.patch,patch.id.adam,param.shape.step.length,matrix,new.patch,same.patch)) %>% 
   mutate(patch.size=log(patch.size)) %>% 
   rename(log.patch.size=patch.size) %>% 
   ggpairs(upper=list(continuous="cor"),lower=list(continuous="smooth"))
@@ -1396,11 +1465,11 @@ results.emigration<-results.emigration %>%
 #Proportion of fruits in the same patch
 #Model without random structure
 library("nlme")
-summary(mod.1<-gls(asin(sqrt(prop.same.patch)) ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch))))
+summary(mod.1<-gls(asin(sqrt(prop.same.patch)) ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch)),na.action=na.omit))
 
 
 #GLMM nesting frequency
-summary(mod.2<-lme(asin(sqrt(prop.same.patch)) ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch),method="REML")))
+summary(mod.2<-lme(asin(sqrt(prop.same.patch)) ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch),method="REML"),na.action=na.omit))
 
 #Continue with LMM
 #Without step length
@@ -1548,6 +1617,9 @@ dispersal.distance(#focal.patch=focal.patch,
   #Delete last observation which has nothing
   results.simulations.dispersal.distance.df<-results.simulations.dispersal.distance.df[-nrow(results.simulations.dispersal.distance.df),]
   
+  results.simulations.dispersal.distance.df<-results.simulations.dispersal.distance.df %>% 
+    na.omit()
+  
 
 
 ```
@@ -1609,7 +1681,7 @@ results.simulations.dispersal.distance.df%>%
 #library("nlme")
 summary(mod.1<-gls(log.dispersal.distance ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.simulations.dispersal.distance.df %>% 
   filter(same.patch==1 | new.patch==1)) %>% mutate(id=paste(patch.id.adam,focal.patch),
-                                                   log.dispersal.distance=log(dispersal.distance+1)))
+                                                   log.dispersal.distance=log(dispersal.distance+1)),na.action=na.omit)
 
 
 #GLMM nesting frequency
@@ -1676,7 +1748,7 @@ results.simulations.dispersal.distance.df %>%
 #library("nlme")
 summary(mod.1<-gls(log.dispersal.distance ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.simulations.dispersal.distance.df %>% 
   filter(new.patch==1)) %>% mutate(id=paste(patch.id.adam,focal.patch),
-                                                            log.dispersal.distance=log(dispersal.distance+1)))
+                                                            log.dispersal.distance=log(dispersal.distance+1)),na.action=na.pass)
 
 
 #GLMM nesting frequency
@@ -1685,8 +1757,8 @@ summary(mod.2<-lme(log.dispersal.distance ~scale(param.scale.step.length) + scal
                                                             log.dispersal.distance=log(dispersal.distance+1),method="REML")))
 
 #Continue with LMM
-#Without habitat utilization
-summary(mod.3 <- update(mod.2,.~. -scale(param.shape.step.length)))
+#Without elevation
+summary(mod.3 <- update(mod.2,.~. -scale(elevation)))
 
 #Without habitat utilization
 summary(mod.4 <- update(mod.3,.~. -scale(percent.forest)))
@@ -1694,14 +1766,15 @@ summary(mod.4 <- update(mod.3,.~. -scale(percent.forest)))
 #Without habitat utilization
 summary(mod.5 <- update(mod.4,.~. -scale(log.patch.size)))
 
-#Without habitat utilization
-summary(mod.6 <- update(mod.5,.~. -scale(time)))
 
 
 results.simulations.dispersal.distance.df %>% 
   ggplot(aes(x=time,y=dispersal.distance,group=time)) + 
   geom_boxplot() +
   geom_smooth(method="lm")
+
+summary(rda(results.simulations.dispersal.distance.df[,c("same.patch","matrix","new.patch")],results.simulations.dispersal.distance.df[,c("param.scale.step.length","param.habitat.utilization","time","log.patch.size","percent.forest","elevation")]))
+
 
 ```
 
@@ -1713,7 +1786,7 @@ results.simulations.dispersal.distance.df %>%
 ```{r}
 #save.image("borrar.RData")
 source("SSF simulation functions all birds.R")
-load("borrar.RData")
+#load("borrar.RData")
 #for (i in 1:length(forest.raster.cropped)){
 #for (i in c(1,2,4,8,9)){ #not included: 5
 for (i in c(1:6,12,14,15,18,20,24)){ #included: 1:6,12,14,15,18,20,24
