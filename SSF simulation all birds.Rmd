@@ -56,6 +56,7 @@ library("tibble")
 library("sf")
 library("raster")
 library("fasterize")
+library("nlme")
 ```
 
 
@@ -1787,9 +1788,9 @@ summary(rda(results.simulations.dispersal.distance.df[,c("same.patch","matrix","
 #save.image("borrar.RData")
 source("SSF simulation functions all birds.R")
 #load("borrar.RData")
-#for (i in 1:length(forest.raster.cropped)){
+for (i in 1:length(forest.raster.cropped)){
 #for (i in c(1,2,4,8,9)){ #not included: 5
-for (i in c(1:6,12,14,15,18,20,24)){ #included: 1:6,12,14,15,18,20,24
+#for (i in c(1:6,12,14,15,18,20,24)){ #included: 1:6,12,14,15,18,20,24
 start <- Sys.time()
   print(paste("Starting slot ",i,". Time ",start))
   
@@ -1846,10 +1847,18 @@ forest.raster.cropped[[i]]$focal.patch.immigration<-forest.raster.cropped[[i]]$f
 #forest.raster.cropped[[i]]$focal.patch.immigration<-forest.raster.cropped[[i]]$immigration.map.labeled[cellFromXY(forest.raster.cropped[[i]]$immigration.map.labeled,forest.raster.cropped[[i]]$focal.patch.xy)]
 
 #Obtain all the patches id from the croped map
-forest.raster.cropped[[i]]$patches.immigration<-unique(forest.raster.cropped[[i]]$immigration.map.labeled[])
+forest.raster.cropped[[i]]$patches.immigration<-unique(forest.raster.cropped[[i]]$forest.raster.cropped.labeled.null.model.1[])
 
 #Select all patches except the one with the focal patch
 forest.raster.cropped[[i]]$patches.immigration<-subset(forest.raster.cropped[[i]]$patches.immigration,forest.raster.cropped[[i]]$patches.immigration>0 & forest.raster.cropped[[i]]$patches.immigration!=forest.raster.cropped[[i]]$focal.patch.immigration)
+
+
+#Just unchecked this
+#Obtain all the patches id from the croped map
+#forest.raster.cropped[[i]]$patches.immigration<-unique(forest.raster.cropped[[i]]$immigration.map.labeled[])
+
+#Select all patches except the one with the focal patch
+#forest.raster.cropped[[i]]$patches.immigration<-subset(forest.raster.cropped[[i]]$patches.immigration,forest.raster.cropped[[i]]$patches.immigration>0 & forest.raster.cropped[[i]]$patches.immigration!=forest.raster.cropped[[i]]$focal.patch.immigration)
 
 print(i)
 end <- Sys.time()
@@ -1862,22 +1871,13 @@ rm(Buffer)
 
 ```
 
-```{r}
-for (i in 1:length(forest.raster.cropped)){
-
-forest.raster.cropped[[i]]$patches.immigration<-data.frame(patches.immigration=unique(forest.raster.cropped[[i]]$forest.raster.cropped.labeled[])) %>% 
-  filter(patches.immigration>0 & patches.immigration!=forest.raster.cropped[[i]]$focal.patch.label.cropped) %>% 
-  .$patches.immigration
-}
-
-```
-
 
 Run replicate simulations:
 ##***I THINK IS SHOULD SELECT THE PATCHES FROM THE RASTER.CROPPED.MAP.BUFFER AND THEN DO A BUFFER FROM THE LIMITS OF THOSE PATCHES SO THAT, WHEN I SIMULATE THE MOVEMENT BEHAVIOR, THEY CAN MOVE FREELY IN THE LANDSCAPE AND THEY DO NOT BOUNCE
 ```{r}
 
-source("SSF simulation functions.R")
+source("SSF simulation functions all birds.R")
+#load("immigration.database.Rdata")
 
 #This function simlates movement behavior of an animal and needs the following information 
 #focal.patch: the patches where the simulations will be made
@@ -1899,10 +1899,11 @@ num.sim.per.point<-1
 results.simulations.list.immigration <- split(parameters.simulations.model$id.simulation,parameters.simulations.model$id.simulation)
 
 registerDoParallel(detectCores())
-#registerDoParallel(10)
+#registerDoParallel(4)
 
 #1,2,4,8,13,15,17,18
-#for (i in 1:nrow(parameters.simulations)){
+#for (i in 1:length(forest.raster.cropped)){
+#for (i in c(1:10,12:length(forest.raster.cropped))){
 
   results.simulations.list.immigration <- foreach (i= c(1), #c(1,2,14), #c(1,2,4,9,11,13,14),
                                 .packages=c("amt","raster")) %dopar% {
@@ -1912,8 +1913,13 @@ simulate.movement(focal.patch=forest.raster.cropped[[i]]$patches.immigration,
                   tot.num.minutes=5,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations.model,
-                  num.sim.points.per.patch=num.sim.points.per.patch, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
-                  num.sim.per.point=num.sim.per.point, #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  
+                  num.sim.points.per.patch=num.sim.points.per.patch,
+                  
+                  #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
+                  num.sim.per.point=num.sim.per.point,
+                  
+                  #I tried to only put a number and then save the number I put with the name of the variable but I could not do it, so that is why I specifya outside the function the value and store in in the variable
                   map.full=land_use_raster,
                   map.cropped=forest.raster.cropped[[i]]$forest.raster.cropped,
                   map.cropped.labeled=forest.raster.cropped[[i]]$forest.raster.cropped.labeled,
@@ -1930,35 +1936,145 @@ simulate.movement(focal.patch=forest.raster.cropped[[i]]$patches.immigration,
 ```
 
 
-Plot the map and add simulated paths:
 ```{r}
+#Obtain the information from the list in a data base. 
+#raw.dataframe(#focal.patch=focal.patch,
+ # name.input.database=results.simulations2,
+              #name.output.dataframe=raw.formated.results.emigration)
 
-source("SSF simulation functions.R")
-map.simulations(focal.patch=patches.immigration,
-                num.sim.points.per.patch=num.sim.points.per.patch,
-                num.sim.per.point=num.sim.per.point,
-                dataframe.results=raw.results.immigration,
-                offset=2300,
-                map.full=land_use)
+#***ADDED THIS CHUNK OF CODE. IT IS THE CODE I HAVE FOR THE FUNCTION raw.dataframe BUT OUTSIDE IS WORKING
+  #Create a data frame with 1 row and the number of columns so that it matches the data frame 
+  #I generated for each simulation (in this case is called results.simulations2). I am using the
+  #first element of the list as a molde
+  results.simulations.df.immigration<-data.frame(matrix(0,
+                                          ncol=ncol(results.simulations.list.immigration[[1]][[1]][[1]][[1]][[1]][[1]]),
+                                          nrow=1)) 
+  
+  #Name columns
+  names(results.simulations.df.immigration)<-names(results.simulations.list.immigration[[1]][[1]][[1]][[1]][[1]][[1]])
 
-#ADD CODE TO HIGHLIGHT FOCAL PATCH 
+
+  #Paste all data bases
+  for (z in 1:length(results.simulations.list.immigration)){
+    
+    for(a in 1:length(results.simulations.list.immigration[[z]][[1]])){
+      
+      for (g in 1:length(results.simulations.list.immigration[[z]][[1]][[a]])){
+        
+        for (l in 1:length(results.simulations.list.immigration[[z]][[1]][[a]][[g]]))
+          
+          for (q in 1:length(results.simulations.list.immigration[[z]][[1]][[a]][[g]][[l]]))
+            
+      {
+        
+        df<-results.simulations.list.immigration[[z]][[1]][[a]][[g]][[l]][[q]]
+        
+        results.simulations.df.immigration<-rbind(df,results.simulations.df.immigration)
+        
+      }
+    }
+  }
+  }
+  
+  
+  #Delete last observation which has nothing
+  results.simulations.df.immigration<-results.simulations.df.immigration[-nrow(results.simulations.df.immigration),]
+
 
 ```
 
-#Format the output data base
 
 ```{r}
+#Join the data frame of the lists of points that landed in a place in a mpa where there is no information
+new.coords.test<-data.frame(matrix(0,
+                                          ncol=ncol(results.simulations.list.immigration[[z]][[2]]),
+                                          nrow=1)) 
+  
+  #Name columns
+  names(new.coords.test)<-names(results.simulations.list.immigration[[z]][[2]])
 
-source("SSF simulation functions.R")
-final.database(for.immigration="Y",
-               focal.patch=patches.immigration,
-               name.input.database=raw.results.immigration,
-                         name.output.dataframe=results.immigration)
+#Paste all data bases
+  for (z in 1:length(results.simulations.list.immigration)){
+    
+    df<-results.simulations.list.immigration[[z]][[2]]
+        
+        new.coords.test<-rbind(df,new.coords.test)
+        
+      }
 
-
-#save(raw.results.immigration,file="immigration results raw list focal patch 13 freq bird 851.Rdata")
-
+  #Count the proportion ofpoints that landed in a place in a mpa where there is no information
+  new.coords.test %>% 
+    filter(starting.coord.x!=0) %>% 
+    mutate(test=is.na(test.in.new.coord)) %>% 
+    group_by(test) %>% 
+    summarise(total=n()) %>% 
+    ungroup() %>% 
+    mutate(proportion=total/nrow(new.coords.test %>% 
+    filter(starting.coord.x!=0)))
+  
+  
+  
 ```
+
+
+```{r}
+#Obtain data base with values aggregated by time and showing the proportion of fruit in each faith by time. ###***I DO NOT KNOW WELL HOW AM I GOING TO DO THIS ANALYSIS, SO I DO NOT KNOW WELL THE STRUCTURE OF THE DATA BASE. sPECIFICALLY, I DO NOT KNOW IF I HAVE TO INCLUDE THE PARAMETERS VALUES
+
+results.immigration <- final.database(name.input.database=results.simulations.df.immigration,
+                                      for.immigration = "Y",
+               name.output.dataframe=results.immigration) %>% 
+  na.omit() %>% 
+  filter(time==20 | time==40 | time==60) #Subsetting the times that I am interested
+```
+
+
+
+
+```{r}
+plot(land_use_raster)
+points(results.simulations.df.immigration$x,results.simulations.df.immigration$y,col=results.simulations.df.immigration$patch.id.adam)
+```
+
+```{r}
+#I will plot the points of the simulation in the landscape per patch
+for (i in 1:length(forest.raster.cropped)){
+  
+  #Plot forest map
+  plot(forest.raster.cropped[[i]]$forest.raster.cropped,main=paste("Patch ",i))
+  
+  #Subset the points from that patch
+  p<-results.simulations.df.immigration %>% 
+    filter(patch.id.adam==forest.raster.cropped[[i]]$landscape.variables$Patch)
+  
+  #Plot the points
+  points(p$x,p$y)
+  
+}
+```
+
+#Joining emigration and immigration data bases for estimating emigration/immigration rates
+```{r}
+emigration.immigration.df<-inner_join(results.emigration %>% select(-c("focal.patch","matrix","new.patch","same.patch")),
+                                      results.immigration %>% 
+                                        select(c("patch.id.adam","param.shape.step.length","param.scale.step.length","param.habitat.utilization","time","prop.immigrated")),
+                                      by=c("patch.id.adam","param.shape.step.length","param.scale.step.length","param.habitat.utilization","time")) %>% 
+  mutate(emigration.immigration.rate=if_else(prop.same.patch/prop.immigrated==Inf,prop.same.patch,prop.same.patch/prop.immigrated))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+####THIS CODE I DO NOT THINK I NEED TO RUN IT FOR NOW
 
 ```{r}
 
