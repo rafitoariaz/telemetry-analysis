@@ -202,10 +202,11 @@ simulate.movement<-function(focal.patch=NA,
                                      map.cropped)
     #habitat.kernel[]<-1
     
+    time.location.regurgitation[[q]]<<-as.list(focal.patch)
+    
     #for (z in focal.patch){
     for (z in 1:length(focal.patch)){
       
-      time.location.regurgitation[[q]]<<-as.list(focal.patch)
       #names(time.location.regurgitation[[q]][[z]])<<-focal.patch[[z]] #For now the names are in a character format
       time.location.regurgitation[[q]][[z]]<<-list()
       
@@ -388,7 +389,7 @@ simulate.movement<-function(focal.patch=NA,
             #Print information
             #print(paste((sum(1:z)*g*l*k),"th simulation of",length(focal.patch)*length(num.sim.points.per.patch)*length(num.sim.per.point)*length(tot.num.steps),"simulations"))
             print(paste("Patch",z,"of",length(focal.patch),"patches. Patch id analyzed now:",focal.patch[z]))
-            #print(paste(q,"th parameter simulation of",nrow(parameters.simulations.model,"parameters")))
+            print(paste(q,"th parameter simulation of",nrow(parameters.simulations.model),"parameters"))
             print(paste("Point",g,"of",num.sim.points.per.patch,"points per patch"))
             #print(paste("Point",g,"of",num.sim.points.per.patch,"starting points per patch"))
             print(paste("Point",l,"of",num.sim.per.point,"simulations in the same starting point"))
@@ -652,8 +653,26 @@ final.database<-function(for.immigration="N",
 
 #Formating data base  
   results.simulations <- name.input.database %>% 
-    select(-raster.value) %>% 
-    gather(fate,yes.no,same.patch:new.patch) %>% #Convert from wide to long
+    select(-raster.value)
+  
+  #If the function is used for immigration, I need to include the "immigrated" column
+  if (for.immigration=="Y"){
+    
+    results.simulations<-results.simulations %>% 
+      add_column(immigrated2=.$immigrated,.after="new.patch") %>% #duplicate immigrated column and add it in a specefic position
+      select(-immigrated) %>% #erease original column
+      rename(immigrated=immigrated2) %>% #Rename columns
+      gather(fate,yes.no,same.patch:immigrated)
+    
+  }else{
+    
+    results.simulations<-results.simulations %>% 
+      gather(fate,yes.no,same.patch:new.patch)
+    
+  }
+ 
+  
+  results.simulations<-results.simulations %>% 
     group_by(focal.patch,patch.id.adam,param.shape.step.length,param.scale.step.length,param.habitat.utilization,time,fate) %>% 
     summarise(count=sum(yes.no)) %>% #Count number of fruits thtat landed in the matrix, same patch or new patch
     ungroup() %>% 
@@ -668,7 +687,7 @@ final.database<-function(for.immigration="N",
     #Obtain the proportion of seeds that emigrated for each specific column
     results.simulations<-cbind(results.simulations,
                                prop.table(as.matrix(results.simulations[,c("same.patch","matrix","new.patch","immigrated")]),1) %>% 
-                                 set_colnames(c("prop.same.patch","prop.matrix","prop.new.patch"))) #rename columns
+                                 set_colnames(c("prop.same.patch","prop.matrix","prop.new.patch","prop.immigrated"))) #rename columns
   }
   
   #If the function is used for emmigration, then the immigration column is not generated so it is not considered in the code
