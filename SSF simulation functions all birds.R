@@ -343,6 +343,9 @@ simulate.movement<-function(focal.patch=NA,
               #If the patch where the seed lands is the focal patch, then it immigrated to the focal patch
               time.location.regurgitation[[q]][[z]][[g]][[l]]$immigrated<<-ifelse(time.location.regurgitation[[q]][[z]][[g]][[l]]$patch.emigrated==focal.patch.immigration,1,0)
               
+              #If the patch where the seed lands is the focal patch, then it immigrated to the focal patch
+              time.location.regurgitation[[q]][[z]][[g]][[l]]$focal.patch.immigration<<-focal.patch.immigration
+              
               #Here I am correcting for the fact that if it landed in the focal patch, then it will register too that it landed in a new patch. 
               #So I am stating that if it immigrated then put a 0 on new patch
               time.location.regurgitation[[q]][[z]][[g]][[l]]$new.patch<<-ifelse(time.location.regurgitation[[q]][[z]][[g]][[l]]$immigrated==1,0,time.location.regurgitation[[q]][[z]][[g]][[l]]$new.patch)
@@ -644,7 +647,7 @@ raw.dataframe<-function(for.immigration="N",
 ####FUNCTION FOR OBTAINING THE FORMATED DATA BASE####
 #These function needs the following information:
 #name.input.database: name of the data base that has the information from the movement behavior simulation
-#name.output.dataframe: name for the generated data base
+#name.output.dataframe: name for the generated data base 
 final.database<-function(for.immigration="N",
                          focal.patch=NA,
                          times=unique(name.input.database$time),
@@ -657,8 +660,12 @@ final.database<-function(for.immigration="N",
   
   #If the function is used for immigration, I need to include the "immigrated" column
   if (for.immigration=="Y"){
-    
+  
     results.simulations<-results.simulations %>% 
+      filter(patch.emigrated==focal.patch.immigration) %>% #Select only simulations
+      #that landed in the focal patch I am analyzing
+      mutate(focal.patch=focal.patch.immigration) %>% #For the immigration data base
+      #focal patch will correspond to the focal patch that I am analyzing
       add_column(immigrated2=.$immigrated,.after="new.patch") %>% #duplicate immigrated column and add it in a specefic position
       select(-immigrated) %>% #erease original column
       rename(immigrated=immigrated2) %>% #Rename columns

@@ -1166,8 +1166,8 @@ Run replicate simulations:
 source("SSF simulation functions all birds.R")
 
 #Set up the number of simulations per patch and also number of simulations per starting point
-num.sim.points.per.patch<-20
-num.sim.per.point<-1
+num.sim.points.per.patch<-1
+num.sim.per.point<-20
 tot.num.minutes<-60
 fix.rate<-5
 
@@ -1210,7 +1210,8 @@ stopImplicitCluster()
 ```
 
 ```{r}
-results.simulations.list <- dget("results.simulations.list")
+#results.simulations.list <- dget("results.simulations.list")
+results.simulations.list <- c(dget("results.simulations slots 1 11.list"), dget("results.simulations slots 12 24.list"))
 ```
 
 ```{r}
@@ -1365,6 +1366,15 @@ for (i in 1:length(forest.raster.cropped)){
 }
 ```
 
+```{r}
+forest.raster.cropped[[21]]$landscape.variables$Patch
+
+results.emigration<-results.emigration %>% 
+  filter(patch.id.adam!=53) %>% 
+  filter(patch.id.adam!=32) #%>% 
+  #filter(patch.id.adam!=40)
+```
+
 
 ```{r}
 #I will do a chi test to each of the simulation I made
@@ -1455,36 +1465,41 @@ rm(test.proportions)
 ```{r}
 #Anaylsis of the porportion of fruits in the landscape
 results.emigration %>% 
+  mutate(density.same.patch=same.patch/patch.size) %>% 
   select(-c(focal.patch,patch.id.adam,param.shape.step.length,matrix,new.patch,same.patch)) %>% 
   mutate(patch.size=log(patch.size)) %>% 
   rename(log.patch.size=patch.size) %>% 
   ggpairs(upper=list(continuous="cor"),lower=list(continuous="smooth"))
 
 results.emigration<-results.emigration %>% 
-  mutate(log.patch.size=log(patch.size))
+  mutate(log.patch.size=log(patch.size),
+         density.same.patch=same.patch/patch.size)
 
 #Proportion of fruits in the same patch
 #Model without random structure
 library("nlme")
-summary(mod.1<-gls(asin(sqrt(prop.same.patch)) ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch)),na.action=na.omit))
+summary(mod.1<-gls(asin(sqrt(prop.same.patch)) ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch)),na.action=na.omit))
 
 
 #GLMM nesting frequency
-summary(mod.2<-lme(asin(sqrt(prop.same.patch)) ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch),method="REML"),na.action=na.omit))
+summary(mod.2<-lme(asin(sqrt(prop.same.patch)) ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch),method="REML"),na.action=na.omit))
 
 #Continue with LMM
 #Without step length
-summary(mod.3 <- update(mod.2,.~. -scale(param.shape.step.length)))
+summary(mod.3 <- update(mod.2,.~. -scale(percent.forest)))
 
 #Without patch size
-summary(mod.4 <- update(mod.3,.~. -scale(percent.forest)))
+#summary(mod.4 <- update(mod.3,.~. -scale(percent.forest)))
 
 #Without percent forest
-summary(mod.5 <- update(mod.4,.~. -scale(log.patch.size)))
+#summary(mod.5 <- update(mod.4,.~. -scale(log.patch.size)))
 
 #Without elevation
-summary(mod.6 <- update(mod.5,.~. -scale(elevation)))
+#summary(mod.6 <- update(mod.5,.~. -scale(elevation)))
 
+library("MuMIn")
+#AICc
+AICc(mod.1,mod.2,mod.3)
 
 #Plots
 results.emigration %>% 
@@ -1502,52 +1517,56 @@ results.emigration %>%
 #Proportion of fruits in the matrix
 #Model without random structure
 library("nlme")
-summary(mod.1<-gls(asin(sqrt(prop.matrix)) ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch))))
+summary(mod.1<-gls(asin(sqrt(prop.matrix)) ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch))))
 
 
 #GLMM nesting frequency
-summary(mod.2<-lme(asin(sqrt(prop.matrix)) ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch),method="REML")))
+summary(mod.2<-lme(asin(sqrt(prop.matrix)) ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch),method="REML")))
 
 #Continue with LMM
 #Without step length
-summary(mod.3 <- update(mod.2,.~. -scale(param.shape.step.length)))
+summary(mod.3 <- update(mod.2,.~. -scale(percent.forest)))
 
 #Without patch size
-summary(mod.4 <- update(mod.3,.~. -scale(percent.forest)))
+summary(mod.4 <- update(mod.3,.~. -scale(elevation)))
 
 #Without percent forest
-summary(mod.5 <- update(mod.4,.~. -scale(elevation)))
+#summary(mod.5 <- update(mod.4,.~. -scale(elevation)))
 
 #Without elevation
-summary(mod.6 <- update(mod.5,.~. -scale(log.patch.size)))
+#summary(mod.6 <- update(mod.5,.~. -scale(log.patch.size)))
 
-
+#AICc
+AICc(mod.1,mod.2,mod.3,mod.4)
 
 
 
 #Proportion of fruits in a new patch
 #Model without random structure
 library("nlme")
-summary(mod.1<-gls(asin(sqrt(prop.new.patch)) ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch))))
+summary(mod.1<-gls(asin(sqrt(prop.new.patch)) ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch))))
 
 
 #GLMM nesting frequency
-summary(mod.2<-lme(asin(sqrt(prop.new.patch)) ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch),method="REML")))
+summary(mod.2<-lme(asin(sqrt(prop.new.patch)) ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.emigration %>% mutate(id=paste(patch.id.adam,focal.patch),method="REML")))
 
 anova(mod.1,mod.2)
 
 #Continue with LMM
 #Without step length
-summary(mod.3 <- update(mod.2,.~. -scale(param.shape.step.length)))
+summary(mod.3 <- update(mod.2,.~. -scale(elevation)))
 
 #Without patch size
-summary(mod.4 <- update(mod.3,.~. -scale(log.patch.size)))
+summary(mod.4 <- update(mod.3,.~. -scale(percent.forest)))
 
 #Without percent forest
-summary(mod.5 <- update(mod.4,.~. -scale(elevation)))
+summary(mod.5 <- update(mod.4,.~. -scale(log.patch.size)))
 
 #Without elevation. #MArginally significant, but I will take it out
 summary(mod.6 <- update(mod.5,.~. -scale(param.habitat.utilization)))
+
+#AICc
+AICc(mod.1,mod.2,mod.3,mod.4,mod.5,mod.6)
 
 results.emigration %>% 
   filter(prop.new.patch>0) %>% 
@@ -1556,7 +1575,12 @@ results.emigration %>%
 
 
 results.emigration %>% 
-  ggplot(aes(x=percent.forest,y=prop.new.patch)) +
+  ggplot(aes(x=param.scale.step.length,y=prop.new.patch)) +
+  geom_point() +
+  geom_smooth(method="lm")
+
+results.emigration %>% 
+  ggplot(aes(x=param.habitat.utilization,y=prop.new.patch)) +
   geom_point() +
   geom_smooth(method="lm")
 
@@ -1670,37 +1694,41 @@ tapply(borrar$dispersal.distance,borrar$fate,summary)
 #Pair plot of seed dispersal distance only if it landed on forest
 results.simulations.dispersal.distance.df<-results.simulations.dispersal.distance.df %>% 
   mutate(log.patch.size=log(patch.size),
-         log.dispersal.distance=log(dispersal.distance+1)) 
+         log.dispersal.distance=log(dispersal.distance+1)) %>% 
+    filter(time==20 | time==40 | time==60)
 
 results.simulations.dispersal.distance.df%>% 
   filter(same.patch==1 | new.patch==1) %>% #This only considers seed dispersal to places where it is likely that it will germinate
   select(log.dispersal.distance,param.scale.step.length,param.habitat.utilization,time,log.patch.size,percent.forest,elevation) %>%
   ggpairs(upper=list(continuous="smooth"),lower=list(continuous="cor"))
 
+```
 
+```{r}
 #Model without random structure
 #library("nlme")
-summary(mod.1<-gls(log.dispersal.distance ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.simulations.dispersal.distance.df %>% 
-  filter(same.patch==1 | new.patch==1)) %>% mutate(id=paste(patch.id.adam,focal.patch),
-                                                   log.dispersal.distance=log(dispersal.distance+1)),na.action=na.omit)
+summary(mod.1<-gls(log.dispersal.distance ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.simulations.dispersal.distance.df %>% 
+  filter(same.patch==1 | new.patch==1) %>% mutate(id=paste(patch.id.adam,focal.patch),
+                                                   log.dispersal.distance=log(dispersal.distance+1)),na.action=na.omit))
 
 
 #GLMM nesting frequency
-summary(mod.2<-lme(log.dispersal.distance ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.simulations.dispersal.distance.df %>% 
+summary(mod.2<-lme(log.dispersal.distance ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.simulations.dispersal.distance.df %>% 
   filter(same.patch==1 | new.patch==1) %>% mutate(id=paste(patch.id.adam,focal.patch),
-                                                            log.dispersal.distance=log(dispersal.distance+1),method="REML")))
+                                                            log.dispersal.distance=log(dispersal.distance+1)),method="REML"))
 
 #Continue with LMM
 #Without habitat utilization
-summary(mod.3 <- update(mod.2,.~. -scale(elevation)))
+summary(mod.3 <- update(mod.2,.~. -scale(percent.forest)))
 
 #Without habitat utilization
-summary(mod.4 <- update(mod.3,.~. -scale(param.shape.step.length)))
+#summary(mod.4 <- update(mod.3,.~. -scale(param.shape.step.length)))
 
 #Without habitat utilization
-summary(mod.5 <- update(mod.4,.~. -scale(log.patch.size)))
+#summary(mod.5 <- update(mod.4,.~. -scale(log.patch.size)))
 
-
+#AICc
+AICc(mod.1,mod.2,mod.3)
 
 
 
@@ -1715,28 +1743,29 @@ results.simulations.dispersal.distance.df %>%
 
 #Model without random structure
 #library("nlme")
-summary(mod.1<-gls(log.dispersal.distance ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.simulations.dispersal.distance.df %>% 
+summary(mod.1<-gls(log.dispersal.distance ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.simulations.dispersal.distance.df %>% 
   filter(same.patch==1)) %>% mutate(id=paste(patch.id.adam,focal.patch),
                                                             log.dispersal.distance=log(dispersal.distance+1)))
 
 
 #GLMM nesting frequency
-summary(mod.2<-lme(log.dispersal.distance ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.simulations.dispersal.distance.df %>% 
+summary(mod.2<-lme(log.dispersal.distance ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.simulations.dispersal.distance.df %>% 
   filter(same.patch==1) %>% mutate(id=paste(patch.id.adam,focal.patch),
-                                                            log.dispersal.distance=log(dispersal.distance+1),method="REML")))
+                                                            log.dispersal.distance=log(dispersal.distance+1)),method="REML"))
 
 #Continue with LMM
 #Without habitat utilization
-summary(mod.3 <- update(mod.2,.~. -scale(elevation)))
+summary(mod.3 <- update(mod.2,.~. -scale(percent.forest)))
 
 #Without habitat utilization
-summary(mod.4 <- update(mod.3,.~. -scale(log.patch.size)))
+#summary(mod.4 <- update(mod.3,.~. -scale(log.patch.size)))
 
 #Without habitat utilization
-summary(mod.5 <- update(mod.4,.~. -scale(param.shape.step.length)))
+#summary(mod.5 <- update(mod.4,.~. -scale(param.shape.step.length)))
 
 
-
+#AICc
+AICc(mod.1,mod.2,mod.3)
 
 
 results.simulations.dispersal.distance.df %>% 
@@ -1747,7 +1776,7 @@ results.simulations.dispersal.distance.df %>%
 
 #Model without random structure
 #library("nlme")
-summary(mod.1<-gls(log.dispersal.distance ~scale(param.shape.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.simulations.dispersal.distance.df %>% 
+summary(mod.1<-gls(log.dispersal.distance ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),method = "REML", data = results.simulations.dispersal.distance.df %>% 
   filter(new.patch==1)) %>% mutate(id=paste(patch.id.adam,focal.patch),
                                                             log.dispersal.distance=log(dispersal.distance+1)),na.action=na.pass)
 
@@ -1755,19 +1784,20 @@ summary(mod.1<-gls(log.dispersal.distance ~scale(param.shape.step.length) + scal
 #GLMM nesting frequency
 summary(mod.2<-lme(log.dispersal.distance ~scale(param.scale.step.length) + scale(param.habitat.utilization) + scale(time) + scale(log.patch.size) + scale(percent.forest) + scale(elevation),random = ~1 | id,data=results.simulations.dispersal.distance.df %>% 
   filter(new.patch==1) %>% mutate(id=paste(patch.id.adam,focal.patch),
-                                                            log.dispersal.distance=log(dispersal.distance+1),method="REML")))
+                                                            log.dispersal.distance=log(dispersal.distance+1)),method="REML"))
 
 #Continue with LMM
 #Without elevation
-summary(mod.3 <- update(mod.2,.~. -scale(elevation)))
+summary(mod.3 <- update(mod.2,.~. -scale(percent.forest)))
 
 #Without habitat utilization
-summary(mod.4 <- update(mod.3,.~. -scale(percent.forest)))
+summary(mod.4 <- update(mod.3,.~. -scale(elevation)))
 
 #Without habitat utilization
-summary(mod.5 <- update(mod.4,.~. -scale(log.patch.size)))
+#summary(mod.5 <- update(mod.4,.~. -scale(log.patch.size)))
 
-
+#AICc
+AICc(mod.1,mod.2,mod.3,mod.4)
 
 results.simulations.dispersal.distance.df %>% 
   ggplot(aes(x=time,y=dispersal.distance,group=time)) + 
@@ -1875,6 +1905,8 @@ rm(Buffer)
 Run replicate simulations:
 ##***I THINK IS SHOULD SELECT THE PATCHES FROM THE RASTER.CROPPED.MAP.BUFFER AND THEN DO A BUFFER FROM THE LIMITS OF THOSE PATCHES SO THAT, WHEN I SIMULATE THE MOVEMENT BEHAVIOR, THEY CAN MOVE FREELY IN THE LANDSCAPE AND THEY DO NOT BOUNCE
 ```{r}
+#Save workspace for simulation in calculon
+#save.image("workspace_calculon_immigration.RData")
 
 source("SSF simulation functions all birds.R")
 #load("immigration.database.Rdata")
@@ -1892,7 +1924,7 @@ source("SSF simulation functions all birds.R")
 
 
 #Set up the number of simulations per patch and also number of simulations per starting point
-num.sim.points.per.patch<-1
+num.sim.points.per.patch<-10
 num.sim.per.point<-1
 
 #Make a list of the
@@ -1910,7 +1942,7 @@ registerDoParallel(detectCores())
 
 simulate.movement(focal.patch=forest.raster.cropped[[i]]$patches.immigration,
                   focal.patch.immigration=forest.raster.cropped[[i]]$focal.patch.label.cropped,
-                  tot.num.minutes=5,
+                  tot.num.minutes=60,
                   fix.rate=5,
                   parameters.simulations=parameters.simulations.model,
                   
@@ -1935,6 +1967,10 @@ simulate.movement(focal.patch=forest.raster.cropped[[i]]$patches.immigration,
   
 ```
 
+```{r}
+results.simulations.list.immigration <- dget("results.simulations.immigration.patches.1.3.list")
+
+```
 
 ```{r}
 #Obtain the information from the list in a data base. 
@@ -2020,6 +2056,9 @@ new.coords.test<-data.frame(matrix(0,
 ```{r}
 #Obtain data base with values aggregated by time and showing the proportion of fruit in each faith by time. ###***I DO NOT KNOW WELL HOW AM I GOING TO DO THIS ANALYSIS, SO I DO NOT KNOW WELL THE STRUCTURE OF THE DATA BASE. sPECIFICALLY, I DO NOT KNOW IF I HAVE TO INCLUDE THE PARAMETERS VALUES
 
+#results.simulations.df.immigration<-results.simulations.df.immigration %>% 
+ # mutate(time=rep(c(20,40),times=nrow(results.simulations.df.immigration)/2))
+
 results.immigration <- final.database(name.input.database=results.simulations.df.immigration,
                                       for.immigration = "Y",
                name.output.dataframe=results.immigration) %>% 
@@ -2031,8 +2070,13 @@ results.immigration <- final.database(name.input.database=results.simulations.df
 
 
 ```{r}
+#Plot all the simulated points
 plot(land_use_raster)
 points(results.simulations.df.immigration$x,results.simulations.df.immigration$y,col=results.simulations.df.immigration$patch.id.adam)
+
+#Plot only points that landed in the focal patch
+plot(land_use_raster)
+points((results.simulations.df.immigration %>% filter(patch.emigrated==focal.patch.immigration))$x,(results.simulations.df.immigration%>% filter(patch.emigrated==focal.patch.immigration))$y,col=results.simulations.df.immigration$patch.id.adam)
 ```
 
 ```{r}
@@ -2050,15 +2094,46 @@ for (i in 1:length(forest.raster.cropped)){
   points(p$x,p$y)
   
 }
+
+rm(p)
+```
+
+```{r}
+##Obtain the dispersal distance for each fix rate
+#dispersal.distance(#focal.patch=focal.patch,
+ #                  name.input.database=results.simulations.df.immigration)
+```
+
+```{r}
+results.immigration %>% 
+  select("immigrated","param.scale.step.length","param.habitat.utilization","time","patch.size","percent.forest","elevation") %>% 
+  ggpairs(upper=list(continuous="smooth"),lower=list(continuous="cor"))
 ```
 
 #Joining emigration and immigration data bases for estimating emigration/immigration rates
 ```{r}
-emigration.immigration.df<-inner_join(results.emigration %>% select(-c("focal.patch","matrix","new.patch","same.patch")),
+emigration.immigration.df<-left_join(results.emigration %>% select(-c("prop.matrix","prop.new.patch","prop.same.patch")) %>% 
+                                                                      filter(time==20 | time==40 | time==60),
                                       results.immigration %>% 
-                                        select(c("patch.id.adam","param.shape.step.length","param.scale.step.length","param.habitat.utilization","time","prop.immigrated")),
-                                      by=c("patch.id.adam","param.shape.step.length","param.scale.step.length","param.habitat.utilization","time")) %>% 
-  mutate(emigration.immigration.rate=if_else(prop.same.patch/prop.immigrated==Inf,prop.same.patch,prop.same.patch/prop.immigrated))
+                                        select(c("focal.patch","patch.id.adam","param.shape.step.length","param.scale.step.length","param.habitat.utilization","time","immigrated")),
+                                      by=c("focal.patch","patch.id.adam","param.shape.step.length","param.scale.step.length","param.habitat.utilization","time")) %>% 
+  mutate(immigrated=if_else(is.na(immigrated)=="TRUE",0,immigrated)) %>% 
+  mutate(emigration.immigration.rate=((same.patch + immigrated)/same.patch)) %>% 
+  mutate(emigration.immigration.rate=if_else(is.na(emigration.immigration.rate)=="TRUE",1,emigration.immigration.rate))
+
+
+#number of seeds that stay + number of seeds that enter/number of seeds that stay
+
+emigration.immigration.df[,c(ncol(emigration.immigration.df),1:ncol(emigration.immigration.df)-1)] %>% 
+  select(-c(patch.id.adam,matrix,new.patch,same.patch,immigrated)) %>% 
+  ggpairs(upper=list(continuous="smooth"),lower=list(continuous="cor"))
+
+#Scale step lenght the only one that was significant
+summary(lm(emigration.immigration.rate~param.scale.step.length +param.habitat.utilization + time,data=emigration.immigration.df))
+
+emigration.immigration.df %>% 
+  ggplot(aes(x=param.scale.step.length,y=emigration.immigration.rate,group=param.scale.step.length)) +
+  geom_boxplot()
 ```
 
 
