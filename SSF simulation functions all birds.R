@@ -235,9 +235,9 @@ simulate.movement<-function(focal.patch=NA,
           if (l==1){
             #Generate a random starting point.
             
-            initial.starting.point<-data.frame(sampleStratified(map.cropped.labeled, 
+            initial.starting.point<<-data.frame(sampleStratified(map.cropped.labeled, 
                                                                 1, xy=T))
-            initial.starting.point<-subset(initial.starting.point,
+            initial.starting.point<<-subset(initial.starting.point,
                                            initial.starting.point$forest27==focal.patch[z])[,c("x","y")] #After $ it said forest27. I replaced it
             
             #Put information on data frame of where the bird started its track and the raster value
@@ -684,13 +684,16 @@ final.database<-function(for.immigration="N",
     summarise(count=sum(yes.no)) %>% #Count number of fruits thtat landed in the matrix, same patch or new patch
     ungroup() %>% 
     spread(fate, count) %>%  #Convert from long to wide
-    inner_join(name.input.database %>% 
-                 select(focal.patch,patch.size,percent.forest,elevation,patch.id.adam) %>% 
-                 distinct(),
-               by=c("focal.patch","patch.id.adam"))
+    inner_join(patches.info %>% 
+                 rename(patch.id.adam=Patch,
+                        percent.forest=percent_forest,
+                        patch.size=patch_size),
+               by=c("patch.id.adam"))
+  
   
   #If the function is used for the immigration part, then it has to consider the immigration column generated
   if(for.immigration=="Y"){
+
     #Obtain the proportion of seeds that emigrated for each specific column
     results.simulations<-cbind(results.simulations,
                                prop.table(as.matrix(results.simulations[,c("same.patch","matrix","new.patch","immigrated")]),1) %>% 
