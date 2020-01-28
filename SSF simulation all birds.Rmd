@@ -95,8 +95,9 @@ original.database %>%
   ungroup() %>% 
   arrange(desc(num.obs))
 
+
 #Remove elements that I will not use
-rm(clean.freq,clean.tel.data,prueba,m)
+rm(clean.freq,clean.tel.data,prueba,m,d)
 ```
 
 #Prepare map
@@ -156,13 +157,21 @@ colnames(patches.info)<-c("Patch","percent_forest","elevation","patch_size") #**
 
 
 ```{r}
+
+#MAKE MAP WITH RASTER MAP AND GOOGLE MAPS
+
+```
+
+
+```{r}
 #Create a data frame with id as the first column and the second column has a data frame inside it with the x,y and time (t)
 condensed.dataframe <- original.database %>% nest(-id)
 
 #Show the frequency of the birds I followed
 unique(condensed.dataframe$id)
 
-#Subset certain individuals since I cannot run the code with certain frequencies. ****CHECK LATER HOW TO RUN THE CODE WITH ALL FREQUENCIES
+#Subset certain individuals since I cannot run the code with certain frequencies.
+###***I am subsetting these frequencies because individuals moved in forested and non-forested areas, so I will use this database to analyse habitat selection since I need points in both kind of forests. ****CHECK LATER HOW TO RUN THE CODE WITH ALL FREQUENCIES
 condensed.dataframe.subset<-subset(condensed.dataframe,condensed.dataframe$id==232 |
                   condensed.dataframe$id==881 |
                   condensed.dataframe$id==942 |
@@ -179,7 +188,7 @@ condensed.dataframe.subset<-subset(condensed.dataframe,condensed.dataframe$id==2
                   condensed.dataframe$id==392 |
                   condensed.dataframe$id==202)
                     
-
+###***The reminder of the individuals only moved or barely moved in one  kind of habitat, so I cannot run the habitat selection function if there are no points in both habitats. However, I can use this data base to estimate turning angle and step length. 
 
 #432 only moved in forested area, so the interaction terms of step length and habitat selection between habitats is not working since there are no steps in the matrix
 #273 has only 4 movments in the forest, so the interaction is not working
@@ -234,31 +243,81 @@ select(id, sr) %>% unnest
 condensed.dataframe.subset.remaining %>% mutate(sr = lapply(trk, summarize_sampling_rate)) %>%
 select(id, sr) %>% unnest
 ```
+#Good job Luis! :)
+#Tasks to do
+###Describe what I just did
+###Run analysis of SSF to estimate parameter for each of the simulations
+###Obtain a data frame that will have all the information of each of the simulations
+###Obtain statistics :)
 
 #Make tracks
 ```{r}
+#I need to estimate with a lot of simulations the men (or median) and the confidence intervals for the habitat selection parameter. Therefore, I am doing this list that has the following structure:
+#Level 1: id frequency of the bird
+#Level 2: slot for storing the number of steps
+#Level 3: slot for storing each of the simulations
+
+#Doing the list where I will store all the information by using the split function
+condensed.dataframe.subset.list<-split(condensed.dataframe.subset$id,condensed.dataframe.subset$id)
+
+#Making a data frame of the number of random steps I want to be generated
+num.random.steps<-c(seq(from=5,
+                        to=30,
+                        by=5))
+
+#Number of simulations
+num.simulations<-100
+
+#For each frequency
+for (i in 1:length(condensed.dataframe.subset.list)){
+  
+  #Generate a list inside the selected frequency
+  condensed.dataframe.subset.list[[i]]<-list()
+
+  #For each number of random step
+  for(k in 1:length(num.random.steps)){
+  
+    #Generate a list
+    condensed.dataframe.subset.list[[i]][[k]]<-list()
+    #names(condensed.dataframe.subset.list[[i]])<-paste(num.random.steps[k],"random steps")
+    
+    #For each simulation
+    for(l in 1:num.simulations){
+
+    
 ###****I had to update the dplyr package so that I could run a code but now the filter_min_n_burst function is not working. I will ignore it until I fix it
 
-condensed.dataframe.subset <- condensed.dataframe.subset %>% mutate(ssf = lapply(trk, function(x) {
+condensed.dataframe.subset.list[[i]][[k]][[l]] <- condensed.dataframe.subset %>% 
+  #Filter the id I will analyze
+  filter(id==names(condensed.dataframe.subset.list)[i]) %>% 
+  mutate(ssf = lapply(trk, function(x) {
 x %>% 
     track_resample(rate = minutes(5), tolerance = minutes(2)) %>% #A track will be considered if the two consecutive GPS points are separated by 5 minutes +- 2 minutes of tolerance
     #filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
     steps_by_burst() %>% #Converts the points to tracks
-    random_steps() %>% #Makes 9 random steps
+    random_steps(n=num.random.steps[k]) %>% #Makes l random steps
     extract_covariates(land_use_raster, where = "both") %>% #Extracts covariates of vegetation on initial and ending location. In "amt tutorial.pdf" it explains the following: covariate values at the start and the end of a step can also be included in the model as interaction with each other, to test hypotheses of the type: Are animals more likely to stay in a given habitat, if they are already in the habitat?
     mutate(forest27_start = factor(forest27_start, levels = c(0, 1), labels = c("matrix", "forest"))) %>% #factor (forest27_start you have to check the name of the column of the data base that is generated one step before (in this case is forest27_start). Just run the 2 precedent pipe lines and a tibble with the names of the column will appeaar)
     mutate(forest27_end = factor(forest27_end, levels = c(0, 1), labels = c("matrix", "forest"))) %>% 
     mutate(log_sl_ = log(sl_)) #Obtain logarithm of step lenght
+    
 }))
 
+    
+    print(paste("Frequency",i,"of",length(condensed.dataframe.subset.list)))
+    print(paste(k,"of",length(num.random.steps),"random steps",length(condensed.dataframe.subset.list)))
+    print(paste(l,"of",num.simulations,"simulations"))
 
+}
+}
+}
 
 condensed.dataframe.subset.remaining <- condensed.dataframe.subset.remaining %>% mutate(ssf = lapply(trk, function(x) {
 x %>% 
     track_resample(rate = minutes(5), tolerance = minutes(2)) %>% #A track will be considered if the two consecutive GPS points are separated by 5 minutes +- 2 minutes of tolerance
     #filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
     steps_by_burst() %>% #Converts the points to tracks
-    random_steps() %>% #Makes 9 random steps
+    random_steps(n=9) %>% #Makes 9 random steps
     extract_covariates(land_use_raster, where = "both") %>% #Extracts covariates of vegetation on initial and ending location. In "amt tutorial.pdf" it explains the following: covariate values at the start and the end of a step can also be included in the model as interaction with each other, to test hypotheses of the type: Are animals more likely to stay in a given habitat, if they are already in the habitat?
     mutate(forest27_start = factor(forest27_start, levels = c(0, 1), labels = c("matrix", "forest"))) %>% #factor (forest27_start you have to check the name of the column of the data base that is generated one step before (in this case is forest27_start). Just run the 2 precedent pipe lines and a tibble with the names of the column will appeaar)
     mutate(forest27_end = factor(forest27_end, levels = c(0, 1), labels = c("matrix", "forest"))) %>% 
@@ -272,7 +331,7 @@ x %>%
     track_resample(rate = minutes(5), tolerance = minutes(2)) %>% #A track will be considered if the two consecutive GPS points are separated by 5 minutes +- 2 minutes of tolerance
     #filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
     steps_by_burst() %>% #Converts the points to tracks
-    random_steps() %>% #Makes 9 random steps
+    random_steps(n=9) %>% #Makes 9 random steps
     extract_covariates(land_use_raster, where = "both") %>% #Extracts covariates of vegetation on initial and ending location. In "amt tutorial.pdf" it explains the following: covariate values at the start and the end of a step can also be included in the model as interaction with each other, to test hypotheses of the type: Are animals more likely to stay in a given habitat, if they are already in the habitat?
     mutate(forest27_start = factor(forest27_start, levels = c(0, 1), labels = c("matrix", "forest"))) %>% #factor (forest27_start you have to check the name of the column of the data base that is generated one step before (in this case is forest27_start). Just run the 2 precedent pipe lines and a tibble with the names of the column will appeaar)
     mutate(forest27_end = factor(forest27_end, levels = c(0, 1), labels = c("matrix", "forest"))) %>% 
@@ -280,6 +339,7 @@ x %>%
 }))
 
 ```
+
 
 #Plot habitat selection by bird (includes all birds)
 ```{r,purl=FALSE}
@@ -337,6 +397,11 @@ tracking.database.unlisted %>%
   xlab("Bird id") +
   ylab("Log step length")
 #ggsave("Graphs/Step length by bird.jpg")
+
+tracking.database.unlisted %>% 
+  filter(id==942) %>% 
+  ggplot(aes(x=sl_)) +
+  geom_histogram()
 
 #Satistics of step lenght
 summary(tracking.database.unlisted$sl_)
@@ -659,6 +724,106 @@ tracking.database.unlisted %>%
 
 
 
+
+
+
+
+
+
+```{r}
+df<-habitat.selection.parameter.df<-data.frame(freq.id=0,
+                                           num.random.steps=0,
+                                           id.simulation=0,
+                                           shape.step.length=0,
+                                           scale.step.length=0,
+                                           habitat.utilization=0)
+
+#For each frequency
+for (i in 1:length(condensed.dataframe.subset.list)){
+  
+  #For each number of random step
+  for(k in 1:length(num.random.steps)){
+
+    #For each simulation
+    for(l in 1:num.simulations){
+
+      condensed.dataframe.subset.list[[i]][[k]][[l]]<-condensed.dataframe.subset.list[[i]][[k]][[l]] %>% 
+  mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + cos(ta_)  + log_sl_:forest27_end + cos(ta_):forest27_end + strata(step_id_))))
+      
+      
+      df$freq.id<-names(condensed.dataframe.subset.list)[i]
+      
+      df$num.random.steps<-num.random.steps[k]
+      
+      df$id.simulation<-l
+      
+      df$shape.step.length <- sl_shape(condensed.dataframe.subset.list[[i]][[k]][[l]]$fit[[1]])  #It uses a gamma distribution for step length. I think this is the mean. ***Understand why are they using a gamma distribution. HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE GAMMA DISTRIBUTION I WOULD LIKE TO SIMULATE
+  
+  df$scale.step.length <- sl_scale(condensed.dataframe.subset.list[[i]][[k]][[l]]$fit[[1]]) #It uses a gamma distribution for step length. I think this is the scale, which is part of what will determine the distribution ***Understand why are they using a gamma distribution. HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE GAMMA DISTRIBUTION I WOULD LIKE TO SIMULATE
+
+  
+  df$habitat.utilization <- coef(condensed.dataframe.subset.list[[i]][[k]][[l]]$fit[[1]])["forest27_endforest"] #***HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE HABITAT SELECTION COEFFICIENT I WOULD LIKE TO SIMULATE
+      
+      habitat.selection.parameter.df<-rbind(habitat.selection.parameter.df,df)
+      
+          print(paste("Frequency",i,"of",length(condensed.dataframe.subset.list)))
+    print(paste(k,"of",length(num.random.steps),"random steps",length(condensed.dataframe.subset.list)))
+    print(paste(l,"of",num.simulations,"simulations"))
+      
+    }
+  }
+}
+
+habitat.selection.parameter.df<-habitat.selection.parameter.df[-1,] %>% 
+  gather(parameter,value,shape.step.length:habitat.utilization)
+
+
+for (i in unique(habitat.selection.parameter.df$parameter)){
+
+print(habitat.selection.parameter.df %>% 
+    filter(parameter==i & freq.id!=973) %>% 
+  ggplot(aes(x=freq.id,y=value)) +
+  geom_boxplot() +
+  facet_wrap(~num.random.steps) + 
+    ylab(i) +
+    theme(axis.text.x = element_text(angle = 45)) +
+    geom_hline(yintercept=0,col="red"))
+  
+}
+
+
+d<-habitat.selection.parameter.df %>% 
+  filter(freq.id!=973)
+
+tapply(d$value,d$parameter,summary)
+
+print(habitat.selection.parameter.df %>% 
+          filter(parameter=="habitat.utilization" & freq.id!=973) %>% 
+          ggplot(aes(x=freq.id,y=value)) +
+          geom_boxplot() +
+          facet_wrap(~num.random.steps) + 
+          ylab(i) +
+          theme(axis.text.x = element_text(angle = 45)))
+
+
+
+d<-original.database %>% 
+  mutate(month=substr(t,7,7)) %>% 
+  filter(id==973 & month==8)
+
+plot(crop(land_use_raster,extent(min(d$x),max(d$x),min(d$y),max(d$y))))
+points(d$x,d$y)
+
+habitat.selection.parameter.df %>% 
+  ggplot(aes(x=num.random.steps,y=value,group=num.random.steps)) +
+  geom_boxplot() +
+  facet_wrap(~parameter,scales="free")
+
+
+rm(df,d)
+
+```
+
 #Fit models
 ```{r}
 #This was the original model, which used log_sl and sl in the same model. The authors did it that way, although it is weird that two variables that are transformed are used in the same model. I will use only one of them to fit the model
@@ -672,12 +837,37 @@ condensed.dataframe.subset <- condensed.dataframe.subset %>%
 condensed.dataframe.subset.remaining2<-condensed.dataframe.subset.remaining[c(1,4,6,8,9,10),] %>% 
   mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + cos(ta_) + strata(step_id_),method="efron")))
 
+for (i in 1:nrow(condensed.dataframe.subset.remaining2)){
+
+print(table(condensed.dataframe.subset.remaining2$ssf[[i]]$forest27_start,condensed.dataframe.subset.remaining2$ssf[[i]]$forest27_end))
+  
+  plot(crop(land_use_raster,extent(min(condensed.dataframe.subset.remaining2$ssf[[i]]$x1_,condensed.dataframe.subset.remaining2$ssf[[i]]$x2_)-200,max(condensed.dataframe.subset.remaining2$ssf[[i]]$x1_,condensed.dataframe.subset.remaining2$ssf[[i]]$x2_)+200,min(condensed.dataframe.subset.remaining2$ssf[[i]]$y1_,condensed.dataframe.subset.remaining2$ssf[[i]]$y2_)-200,max(condensed.dataframe.subset.remaining2$ssf[[i]]$y1_,condensed.dataframe.subset.remaining2$ssf[[i]]$y2_)+200)))
+
+  points(c(condensed.dataframe.subset.remaining2$ssf[[i]]$x1_,condensed.dataframe.subset.remaining2$ssf[[i]]$x2_),c(condensed.dataframe.subset.remaining2$ssf[[i]]$y1_,condensed.dataframe.subset.remaining2$ssf[[i]]$y2_))
+  
+}
+
+
+
+
+ggmap::register_google(key="AIzaSyDt6p72VHjcwRz20RXAla1DCXFwGU77w_u")
+
+ggmap::get_map(location=c(long=-82.92,lat=8.76),maptype="satellite")
+
+
+ggplot() +
+  geom_raster(land_use_raster)
+
+
 #***I cannot run row 4,6,8,9,10
 condensed.dataframe.subset.remaining <- condensed.dataframe.subset.remaining[c(2,3,5,7),] %>% 
   mutate(fit = map(ssf, ~ fit_issf(.,case_ ~ forest27_end + log_sl_ + cos(ta_) + strata(step_id_))))
 
 
 condensed.dataframe.subset <- rbind(condensed.dataframe.subset,condensed.dataframe.subset.remaining,condensed.dataframe.subset.remaining2)
+
+
+sl_shape(condensed.dataframe.subset.remaining2$fit[[1]])
 ```
 
 
