@@ -222,8 +222,11 @@ simulate.movement<-function(focal.patch=NA,
           #Copies a base data frame with information that I need to do the simulation
           time.location.regurgitation[[q]][[z]][[g]][[l]] <<- one.sim
           
-          #Adds the bird id
-          time.location.regurgitation[[q]][[z]][[g]][[l]]$num.simulation<<-g
+          #Adds the id of the simulation in the patch
+          time.location.regurgitation[[q]][[z]][[g]][[l]]$id.simulation.in.patch<<-g
+          
+          #Adds the id of the simulation in the patch
+          time.location.regurgitation[[q]][[z]][[g]][[l]]$id.simulation.per.point<<-l
           
           #Add the id of the focal patch
           time.location.regurgitation[[q]][[z]][[g]][[l]]$focal.patch<<-focal.patch[z]
