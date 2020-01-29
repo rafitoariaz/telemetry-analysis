@@ -4,6 +4,8 @@ clean.tel.data<-function (){
   #Load file. 
   #prueba<<-read.xlsx("Data bases/Datos telemetria Julio Agosto 2016 2.xlsx",sheet=1) #This was the original one
   prueba<<-read.xlsx("Data bases/Datos telemetria Julio Agosto 2016 2 modified  V2.xlsx",sheet=1)
+  #prueba<<-read.xlsx("scratch/ariasmed/Data_bases/Datos_telemetria_Julio_Agosto_2016_2_modified_V2.xlsx",sheet=1)
+  
   
   table(prueba$FREQ)
   #Subset if there are NA and convert into numeric string the locations and orientation
