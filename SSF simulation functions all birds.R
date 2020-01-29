@@ -1,3 +1,169 @@
+####FUNCTION FOR SIMULATING RUNS FOR ESTIMATING HABITAT AND STEP LENGTH PARAMETERS####
+
+###***CONTINUE DOING THE FUNCTION SO THAT I CAN OBTAIN THE HABITAT SELECTION AND 
+#STEP LENGTHS PARAMETERS FOR THE DIFFERENT SUBSETTED INFORMATION IN THE DATA BASE. 
+#THEN I WOULD ESTIMATE FOR EACH DATA BASE THE PARAMETERS AND THEN JOIN ALL THE DATA
+#BASES TO DO A BOXPLOT
+
+
+simulation.random.steps<-function(input.data.frame=NA,
+                                  num.random.steps.from=NA,
+                                  num.random.steps.to=NA,
+                                  num.random.steps.by=NA,
+                                  num.simulations=NA,
+                                  output.data.frame=NA){
+
+
+#I need to estimate with a lot of simulations the men (or median) and the confidence intervals for the habitat selection parameter. Therefore, I am doing this list that has the following structure:
+#Level 1: id frequency of the bird
+#Level 2: slot for storing the number of steps
+#Level 3: slot for storing each of the simulations
+
+#Doing the list where I will store all the information by using the split function
+  input.data.frame.list<-split(input.data.frame$id,input.data.frame$id)
+
+#Making a data frame of the number of random steps I want to be generated
+num.random.steps<-c(seq(from=num.random.steps.from,
+                        to=num.random.steps.to,
+                        by=num.random.steps.by))
+
+#For each frequency
+for (i in 1:length(input.data.frame.list)){
+  
+  #Generate a list inside the selected frequency
+  input.data.frame.list[[i]]<-list()
+  
+  #For each number of random step
+  for(k in 1:length(num.random.steps)){
+    
+    #Generate a list
+    input.data.frame.list[[i]][[k]]<-list()
+    #names(condensed.dataframe.subset.list[[i]])<-paste(num.random.steps[k],"random steps")
+    
+    #For each simulation
+    for(l in 1:num.simulations){
+      
+      
+      ###****I had to update the dplyr package so that I could run a code but now the filter_min_n_burst function is not working. I will ignore it until I fix it
+      
+      input.data.frame.list[[i]][[k]][[l]] <- input.data.frame %>% 
+        #Filter the id I will analyze
+        filter(id==names(input.data.frame.list)[i]) %>% 
+        mutate(ssf = lapply(trk, function(x) {
+          x %>% 
+            track_resample(rate = minutes(5), tolerance = minutes(2)) %>% #A track will be considered if the two consecutive GPS points are separated by 5 minutes +- 2 minutes of tolerance
+            #filter_min_n_burst(min_n = 3) %>% #Keep only tracks that have three consecutive locations, which is the minimum requeried for doing the analysis
+            steps_by_burst() %>% #Converts the points to tracks
+            random_steps(n=num.random.steps[k]) %>% #Makes l random steps
+            extract_covariates(land_use_raster, where = "both") %>% #Extracts covariates of vegetation on initial and ending location. In "amt tutorial.pdf" it explains the following: covariate values at the start and the end of a step can also be included in the model as interaction with each other, to test hypotheses of the type: Are animals more likely to stay in a given habitat, if they are already in the habitat?
+            mutate(forest27_start = factor(forest27_start, levels = c(0, 1), labels = c("matrix", "forest"))) %>% #factor (forest27_start you have to check the name of the column of the data base that is generated one step before (in this case is forest27_start). Just run the 2 precedent pipe lines and a tibble with the names of the column will appeaar)
+            mutate(forest27_end = factor(forest27_end, levels = c(0, 1), labels = c("matrix", "forest"))) %>% 
+            mutate(log_sl_ = log(sl_)) #Obtain logarithm of step lenght
+          
+        }))
+      
+      
+      print(paste("Frequency",i,"of",length(input.data.frame.list)))
+      print(paste(k,"of",length(num.random.steps),"random steps",length(input.data.frame.list)))
+      print(paste(l,"of",num.simulations,"simulations"))
+      
+    }
+  }
+}
+
+#Give the name of the data frame to the name that I stated on the function
+assign(deparse(substitute(output.data.frame)),input.data.frame.list, envir=.GlobalEnv)
+
+
+}
+
+
+
+
+####FUNCTION FOR ESTIMATE THE PARAMETERS FROM THE SIMULATIONS MADE FOR THE RANDOM STEPS
+#AND THEN OBTAIN A DATA FRAME WITH THE PARAMETERS####
+
+estimation.SSF.parameters<-function(input.data.frame=NA,
+                                    num.random.steps.from=NA,
+                                    num.random.steps.to=NA,
+                                    num.random.steps.by=NA,
+                                    num.simulations=NA,
+                                    formula.SSF=NA,
+                                    method.SSF=NA,
+                                    output.data.frame=NA){
+
+  num.random.steps<-c(seq(from=num.random.steps.from,
+                          to=num.random.steps.to,
+                          by=num.random.steps.by))
+  
+
+df<-habitat.selection.parameter.df<-data.frame(freq.id=0,
+                                               num.random.steps=0,
+                                               id.simulation=0,
+                                               shape.step.length=0,
+                                               scale.step.length=0,
+                                               habitat.utilization=0)
+
+#For each frequency
+for (i in 1:length(input.data.frame)){
+  
+  #For each number of random step
+  for(k in 1:length(num.random.steps)){
+    
+    #For each simulation
+    for(l in 1:num.simulations){
+      
+      input.data.frame[[i]][[k]][[l]]<-
+        
+        if(is.na(method.SSF)=="TRUE"){
+        input.data.frame[[i]][[k]][[l]] %>% 
+          mutate(fit = map(ssf, ~ fit_issf(.,formula.SSF)))
+        
+        }else{
+          
+          input.data.frame[[i]][[k]][[l]] %>% 
+            mutate(fit = map(ssf, ~ fit_issf(.,formula.SSF,method=method.SSF)))
+          
+          }
+      
+      
+      df$freq.id<-names(input.data.frame)[i]
+      
+      df$num.random.steps<-num.random.steps[k]
+      
+      df$id.simulation<-l
+      
+      df$shape.step.length <- sl_shape(input.data.frame[[i]][[k]][[l]]$fit[[1]])  #It uses a gamma distribution for step length. I think this is the mean. ***Understand why are they using a gamma distribution. HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE GAMMA DISTRIBUTION I WOULD LIKE TO SIMULATE
+      
+      df$scale.step.length <- sl_scale(input.data.frame[[i]][[k]][[l]]$fit[[1]]) #It uses a gamma distribution for step length. I think this is the scale, which is part of what will determine the distribution ***Understand why are they using a gamma distribution. HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE GAMMA DISTRIBUTION I WOULD LIKE TO SIMULATE
+      
+      
+      df$habitat.utilization <- coef(input.data.frame[[i]][[k]][[l]]$fit[[1]])["forest27_endforest"] #***HERE ALSO I WILL PUT THE DIFFERENT VALUES FOR THE HABITAT SELECTION COEFFICIENT I WOULD LIKE TO SIMULATE
+      
+      habitat.selection.parameter.df<-rbind(habitat.selection.parameter.df,df)
+      
+      print(paste("Frequency",i,"of",length(input.data.frame)))
+      print(paste(k,"of",length(num.random.steps),"random steps",length(input.data.frame)))
+      print(paste(l,"of",num.simulations,"simulations"))
+      
+    }
+  }
+}
+
+habitat.selection.parameter.df<-habitat.selection.parameter.df[-1,] %>% 
+  gather(parameter,value,shape.step.length:habitat.utilization)
+
+#Give the name of the data frame to the name that I stated on the function
+assign(deparse(substitute(output.data.frame)),habitat.selection.parameter.df, envir=.GlobalEnv)
+
+
+}
+
+
+
+
+
+
 ####FUNCTION FOR SIMULATE INDIVIDUAL MOVEMENT BEHAVIOR####
 #map.full=full raster map of all the area
 #repetitions=number of simulations made from a starting point to estimate the transient uilization distribution
